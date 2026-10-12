@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">PackReady Shopkeeper</string>
+    <string name="pos_checkout">POS Checkout</string>
+    <string name="inward_restock">Inward Restock</string>
+    <string name="loose_goods">Loose Goods</string>
+    <string name="khata_ledger">Khata Ledger</string>
+    <string name="daily_reports">Daily Reports</string>
+    <string name="invoice_reconciler">Invoice Reconciler</string>
+</resources>

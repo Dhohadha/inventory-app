@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary_emerald">#10B981</color>
+    <color name="primary_dark_emerald">#047857</color>
+    <color name="secondary_amber">#F59E0B</color>
+    <color name="background_dark">#0F172A</color>
+    <color name="surface_dark">#1E293B</color>
+    <color name="text_light">#F8FAFC</color>
+</resources>
