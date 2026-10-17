@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.packready.shopkeeper.presentation.theme.Caramel400
 import com.packready.shopkeeper.presentation.theme.Caramel500
 import com.packready.shopkeeper.presentation.theme.Emerald500
 import com.packready.shopkeeper.presentation.theme.Roast900
@@ -73,6 +74,7 @@ import com.packready.shopkeeper.presentation.ui.components.PackReadyEmblem
 import com.packready.shopkeeper.presentation.ui.components.PackReadyHeaderBrand
 import com.packready.shopkeeper.presentation.ui.components.PulseDot
 import com.packready.shopkeeper.presentation.ui.components.ReceiptThermalPreviewDialog
+import com.packready.shopkeeper.presentation.ui.components.MultiObjectBoundingBoxOverlay
 import com.packready.shopkeeper.presentation.ui.components.ScanReticleOverlay
 import com.packready.shopkeeper.presentation.ui.components.SpeedDialGrid
 import com.packready.shopkeeper.presentation.ui.components.bouncingClickable
@@ -148,14 +150,84 @@ fun PosCheckoutScreen(
                         if (uiState.isCameraActive) {
                             Box(modifier = Modifier.fillMaxSize()) {
                                 CameraXScannerView(
+                                    customAnalyzer = viewModel.posAnalyzer,
                                     onBarcodeDetected = { barcode ->
                                         viewModel.onEvent(PosUiEvent.OnBarcodeScanned(barcode))
+                                    },
+                                    showShutterButton = true,
+                                    shutterButtonLabel = "Snap to Bill",
+                                    onPhotoCaptured = { bitmap ->
+                                        viewModel.onEvent(PosUiEvent.ProcessCapturedPosPhoto(bitmap))
                                     }
                                 )
-                                ScanReticleOverlay(
-                                    isScanningActive = true,
-                                    lastScannedBarcode = uiState.lastScannedBarcode
-                                )
+                                MultiObjectBoundingBoxOverlay(overlays = uiState.trackedOverlays)
+                                if (uiState.trackedOverlays.isEmpty()) {
+                                    ScanReticleOverlay(
+                                        isScanningActive = true,
+                                        lastScannedBarcode = uiState.lastScannedBarcode,
+                                        showStatusBadge = false
+                                    )
+                                }
+
+                                // Closest Visual Match Suggestion Card
+                                if (uiState.suggestedProduct != null) {
+                                    Card(
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .fillMaxWidth()
+                                            .padding(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Closest Visual Match (${(uiState.suggestionConfidence * 100).toInt()}%)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = uiState.suggestedProduct!!.name,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1
+                                                )
+                                                Text(
+                                                    text = "₹${uiState.suggestedProduct!!.sellingPrice}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Emerald500,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                IconButton(
+                                                    onClick = { viewModel.onEvent(PosUiEvent.DismissSuggestedProduct) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(imageVector = Icons.Default.Close, contentDescription = "Dismiss", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Button(
+                                                    onClick = {
+                                                        viewModel.onEvent(PosUiEvent.AddProductToCart(uiState.suggestedProduct!!))
+                                                        viewModel.onEvent(PosUiEvent.DismissSuggestedProduct)
+                                                    },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Emerald500)
+                                                ) {
+                                                    Text("+ Add", color = Color.White, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
 
                                 // Top Floating Controls Overlay
                                 Row(
@@ -187,6 +259,26 @@ fun PosCheckoutScreen(
                                                 fontWeight = FontWeight.Bold,
                                                 color = Emerald500
                                             )
+                                            if (uiState.telemetry != null) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "• ${uiState.telemetry!!.fps} FPS",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color.White.copy(alpha = 0.85f),
+                                                    fontSize = 11.sp
+                                                )
+                                                if (uiState.telemetry!!.objectCount > 0) {
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "(${uiState.telemetry!!.objectCount})",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Caramel400,
+                                                        fontSize = 11.sp
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
 
@@ -265,17 +357,81 @@ fun PosCheckoutScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(230.dp)
+                                .height(245.dp)
                         ) {
                             CameraXScannerView(
+                                customAnalyzer = viewModel.posAnalyzer,
                                 onBarcodeDetected = { barcode ->
                                     viewModel.onEvent(PosUiEvent.OnBarcodeScanned(barcode))
+                                },
+                                showShutterButton = true,
+                                shutterButtonLabel = "Snap to Bill",
+                                onPhotoCaptured = { bitmap ->
+                                    viewModel.onEvent(PosUiEvent.ProcessCapturedPosPhoto(bitmap))
                                 }
                             )
-                            ScanReticleOverlay(
-                                isScanningActive = true,
-                                lastScannedBarcode = uiState.lastScannedBarcode
-                            )
+                            MultiObjectBoundingBoxOverlay(overlays = uiState.trackedOverlays)
+                            if (uiState.trackedOverlays.isEmpty()) {
+                                ScanReticleOverlay(
+                                    isScanningActive = true,
+                                    lastScannedBarcode = uiState.lastScannedBarcode,
+                                    showStatusBadge = false
+                                )
+                            }
+
+                            // Closest Visual Match Suggestion Card
+                            if (uiState.suggestedProduct != null) {
+                                Card(
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .padding(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Closest Match (${(uiState.suggestionConfidence * 100).toInt()}%)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = uiState.suggestedProduct!!.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
+                                            )
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = { viewModel.onEvent(PosUiEvent.DismissSuggestedProduct) },
+                                                modifier = Modifier.size(28.dp)
+                                            ) {
+                                                Icon(imageVector = Icons.Default.Close, contentDescription = "Dismiss", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            }
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Button(
+                                                onClick = {
+                                                    viewModel.onEvent(PosUiEvent.AddProductToCart(uiState.suggestedProduct!!))
+                                                    viewModel.onEvent(PosUiEvent.DismissSuggestedProduct)
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Emerald500)
+                                            ) {
+                                                Text("+ Add", color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
                             // Top Floating Action Controls
                             Row(
@@ -307,6 +463,26 @@ fun PosCheckoutScreen(
                                             fontWeight = FontWeight.Bold,
                                             color = Emerald500
                                         )
+                                        if (uiState.telemetry != null) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "• ${uiState.telemetry!!.fps} FPS",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Medium,
+                                                color = Color.White.copy(alpha = 0.85f),
+                                                fontSize = 11.sp
+                                            )
+                                            if (uiState.telemetry!!.objectCount > 0) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "(${uiState.telemetry!!.objectCount})",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Caramel400,
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 

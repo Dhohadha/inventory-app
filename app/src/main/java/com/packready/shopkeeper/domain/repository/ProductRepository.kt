@@ -17,4 +17,8 @@ interface ProductRepository {
     suspend fun incrementSales(productId: String, count: Int = 1)
     suspend fun deleteProduct(productId: String)
     suspend fun lookupGlobalCatalog(barcode: String): Product?
+    suspend fun searchGlobalCatalog(query: String, limit: Int = 25): List<Product>
+    suspend fun getGlobalCatalogCount(): Int
+    suspend fun saveProductEmbeddings(productId: String, embeddings: List<Pair<String, FloatArray>>)
+    suspend fun getProductEmbeddings(productId: String): List<Pair<String, FloatArray>>
 }

@@ -18,7 +18,11 @@ class BarcodeAnalyzer(
     private val onBarcodeDetected: (String) -> Unit
 ) : ImageAnalysis.Analyzer {
 
-    private val scanner = BarcodeScanning.getClient()
+    private val scanner = com.google.mlkit.vision.barcode.BarcodeScanning.getClient(
+        com.google.mlkit.vision.barcode.BarcodeScannerOptions.Builder()
+            .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_ALL_FORMATS)
+            .build()
+    )
     private val lastScannedTimestamps = ConcurrentHashMap<String, Long>()
 
     @OptIn(ExperimentalGetImage::class)
@@ -39,8 +43,8 @@ class BarcodeAnalyzer(
                         }
                     }
                 }
-                .addOnFailureListener {
-                    // Ignore transient frame analysis errors
+                .addOnFailureListener { error ->
+                    android.util.Log.w("BarcodeAnalyzer", "Transient barcode scan error: ${error.message}")
                 }
                 .addOnCompleteListener {
                     imageProxy.close()

@@ -180,6 +180,9 @@ class RestockViewModel @Inject constructor(
             )
 
             productRepository.saveProduct(product)
+            if (event.visualEmbeddings.isNotEmpty()) {
+                productRepository.saveProductEmbeddings(product.id, event.visualEmbeddings)
+            }
             soundPoolManager.playSaleSuccess()
             hapticManager.pulseSaleSuccess()
 

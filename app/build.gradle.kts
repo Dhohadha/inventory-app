@@ -52,6 +52,9 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        noCompress += listOf("tflite", "onnx", "db")
+    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -96,6 +99,11 @@ dependencies {
     // ML Kit
     implementation(libs.google.mlkit.barcode)
     implementation(libs.google.mlkit.text)
+    implementation(libs.google.mlkit.text.devanagari)
+    implementation(libs.google.mlkit.objectdetection)
+
+    // ONNX Runtime Android for MobileNetV4 ArcFace & Embedding Inference
+    implementation(libs.onnxruntime.android)
 
     // Network & Serialization
     implementation(libs.retrofit.core)

@@ -54,6 +54,11 @@
             <!-- WorkManager auto-init disabled for Hilt custom worker factory if needed -->
         </provider>
 
+        <!-- Google ML Kit Models Pre-download Declaration (Barcode & Text Recognition) -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode,ocr,custom" />
+
     </application>
 
 </manifest>

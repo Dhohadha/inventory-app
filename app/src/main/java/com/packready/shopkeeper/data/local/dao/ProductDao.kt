@@ -17,7 +17,7 @@ interface ProductDao {
     @Query("SELECT * FROM products ORDER BY salesCount DESC LIMIT :limit")
     fun getTopSellingProductsFlow(limit: Int = 20): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE currentStock <= minStockAlert ORDER BY currentStock ASC")
+    @Query("SELECT * FROM products WHERE currentStock <= CASE WHEN minStockAlert <= 0.0 THEN 5.0 ELSE minStockAlert END ORDER BY currentStock ASC")
     fun getLowStockProductsFlow(): Flow<List<ProductEntity>>
 
     @Query("SELECT * FROM products WHERE category = :category ORDER BY name ASC")

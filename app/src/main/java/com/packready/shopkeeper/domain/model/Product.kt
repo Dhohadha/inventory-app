@@ -68,7 +68,7 @@ data class Product(
     val createdAt: Long = System.currentTimeMillis()
 ) {
     val isLowStock: Boolean
-        get() = currentStock <= minStockAlert
+        get() = currentStock <= (if (minStockAlert <= 0.0) 5.0 else minStockAlert)
 
     val marginPercent: Double
         get() = if (sellingPrice > 0) ((sellingPrice - costPrice) / sellingPrice) * 100.0 else 0.0

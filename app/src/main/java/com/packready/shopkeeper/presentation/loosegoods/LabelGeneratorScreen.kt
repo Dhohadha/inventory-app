@@ -162,45 +162,85 @@ fun LabelGeneratorScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         OutlinedTextField(
                             value = uiState.sellingPriceInput,
                             onValueChange = { viewModel.onEvent(LooseGoodsUiEvent.OnSellingPriceChange(it)) },
-                            label = { Text("Rate / Unit (₹)") },
+                            label = { Text("Rate (₹)", maxLines = 1) },
+                            placeholder = { Text("0.00") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surface
                             ),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1.05f),
                             singleLine = true
                         )
                         OutlinedTextField(
                             value = uiState.costPriceInput,
                             onValueChange = { viewModel.onEvent(LooseGoodsUiEvent.OnCostChange(it)) },
-                            label = { Text("Cost (₹)") },
+                            label = { Text("Cost (₹)", maxLines = 1) },
+                            placeholder = { Text("0.00") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surface
                             ),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(0.95f),
                             singleLine = true
                         )
                         OutlinedTextField(
                             value = uiState.unitInput,
                             onValueChange = { viewModel.onEvent(LooseGoodsUiEvent.OnUnitChange(it)) },
-                            label = { Text("Unit (kg/g/L)") },
+                            label = { Text("Unit", maxLines = 1) },
+                            placeholder = { Text("kg") },
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.surface,
                                 unfocusedContainerColor = MaterialTheme.colorScheme.surface
                             ),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(0.85f),
                             singleLine = true
                         )
+                    }
+
+                    // Quick Unit Selection Chips
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Unit:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        listOf("kg", "g", "L", "ml", "pack", "pcs").forEach { unitOpt ->
+                            val isSelected = uiState.unitInput.equals(unitOpt, ignoreCase = true)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                border = if (isSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { viewModel.onEvent(LooseGoodsUiEvent.OnUnitChange(unitOpt)) }
+                            ) {
+                                Text(
+                                    text = unitOpt,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))

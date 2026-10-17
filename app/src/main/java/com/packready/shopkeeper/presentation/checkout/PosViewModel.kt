@@ -22,11 +22,27 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import android.content.Context
+import com.google.android.gms.tasks.Tasks
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.packready.shopkeeper.data.local.dao.EmbeddingDao
+import com.packready.shopkeeper.data.vision.MultiObjectPosAnalyzer
+import com.packready.shopkeeper.data.vision.RoiProcessor
+import com.packready.shopkeeper.data.vision.VectorSearchEngine
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 @HiltViewModel
 class PosViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val productRepository: ProductRepository,
+    private val embeddingDao: EmbeddingDao,
     private val getTopSellingProductsUseCase: GetTopSellingProductsUseCase,
     private val processScanUseCase: ProcessScanUseCase,
     private val executeCheckoutUseCase: ExecuteCheckoutUseCase,
@@ -38,6 +54,27 @@ class PosViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(PosUiState())
     val uiState: StateFlow<PosUiState> = _uiState.asStateFlow()
+
+    val posAnalyzer: MultiObjectPosAnalyzer by lazy {
+        MultiObjectPosAnalyzer(
+            context = context,
+            productRepository = productRepository,
+            embeddingDao = embeddingDao,
+            coroutineScope = viewModelScope,
+            onProductMatched = { product, confidence, box, method ->
+                onEvent(PosUiEvent.OnVisualProductMatched(product, confidence, method))
+            },
+            onProductSuggested = { product, confidence, box ->
+                onEvent(PosUiEvent.OnProductSuggested(product, confidence))
+            },
+            onBarcodeScanned = { barcode ->
+                onEvent(PosUiEvent.OnBarcodeScanned(barcode))
+            },
+            onTelemetryUpdated = { overlays, telemetry ->
+                onEvent(PosUiEvent.UpdatePosTelemetry(overlays, telemetry))
+            }
+        )
+    }
 
     init {
         observeTopSellingProducts()
@@ -56,6 +93,7 @@ class PosViewModel @Inject constructor(
         viewModelScope.launch {
             productRepository.getAllProducts().collectLatest { list ->
                 _uiState.update { it.copy(allProducts = list) }
+                posAnalyzer.refreshEmbeddingsCache()
             }
         }
     }
@@ -63,12 +101,48 @@ class PosViewModel @Inject constructor(
     fun onEvent(event: PosUiEvent) {
         when (event) {
             is PosUiEvent.ToggleCamera -> {
-                _uiState.update { it.copy(isCameraActive = !it.isCameraActive) }
+                val newActive = !_uiState.value.isCameraActive
+                _uiState.update { it.copy(isCameraActive = newActive) }
+                if (newActive) {
+                    viewModelScope.launch { posAnalyzer.refreshEmbeddingsCache() }
+                }
             }
             is PosUiEvent.SetCameraActive -> {
                 _uiState.update { it.copy(isCameraActive = event.isActive) }
+                if (event.isActive) {
+                    viewModelScope.launch { posAnalyzer.refreshEmbeddingsCache() }
+                }
             }
             is PosUiEvent.OnBarcodeScanned -> handleBarcodeScan(event.barcode)
+            is PosUiEvent.OnVisualProductMatched -> {
+                hapticManager.pulseScan()
+                soundPoolManager.playScanSuccess()
+                _uiState.update { state ->
+                    state.copy(
+                        cart = state.cart.addItem(event.product, 1.0),
+                        toastMessage = "Scanned: ${event.product.name} (${event.method})"
+                    )
+                }
+            }
+            is PosUiEvent.OnProductSuggested -> {
+                _uiState.update { state ->
+                    state.copy(
+                        suggestedProduct = event.product,
+                        suggestionConfidence = event.confidence
+                    )
+                }
+            }
+            is PosUiEvent.DismissSuggestedProduct -> {
+                _uiState.update { it.copy(suggestedProduct = null) }
+            }
+            is PosUiEvent.UpdatePosTelemetry -> {
+                _uiState.update {
+                    it.copy(
+                        trackedOverlays = event.overlays,
+                        telemetry = event.telemetry
+                    )
+                }
+            }
             is PosUiEvent.AddProductToCart -> {
                 hapticManager.pulseScan()
                 soundPoolManager.playScanSuccess()
@@ -87,6 +161,7 @@ class PosViewModel @Inject constructor(
                 }
             }
             is PosUiEvent.ClearCart -> {
+                posAnalyzer.clearResolvedObjects()
                 _uiState.update { state -> state.copy(cart = state.cart.clear()) }
             }
             is PosUiEvent.OnSearchQueryChange -> {
@@ -156,6 +231,7 @@ class PosViewModel @Inject constructor(
                 }
             }
             is PosUiEvent.AddMatchedSlipItemsToCart -> addSelectedSlipItemsToCart()
+            is PosUiEvent.ProcessCapturedPosPhoto -> handleCapturedPosPhoto(event.bitmap)
             is PosUiEvent.ClearMessages -> {
                 _uiState.update { it.copy(errorMessage = null, toastMessage = null) }
             }
@@ -286,5 +362,76 @@ class PosViewModel @Inject constructor(
                 _uiState.update { it.copy(toastMessage = "No paired thermal printer found. Showing digital preview.") }
             }
         }
+    }
+
+    private fun handleCapturedPosPhoto(bitmap: Bitmap) {
+        viewModelScope.launch(Dispatchers.Default) {
+            _uiState.update { it.copy(toastMessage = "Processing camera photo...") }
+
+            val inputImage = InputImage.fromBitmap(bitmap, 0)
+
+            // 1. Scan for Barcode in the photo
+            val barcodeScanner = BarcodeScanning.getClient()
+            try {
+                val barcodes = Tasks.await(barcodeScanner.process(inputImage), 1500L, TimeUnit.MILLISECONDS)
+                val rawBarcode = barcodes.firstOrNull { !it.rawValue.isNullOrBlank() }?.rawValue
+                if (rawBarcode != null) {
+                    withContext(Dispatchers.Main) {
+                        handleBarcodeScan(rawBarcode)
+                    }
+                    return@launch
+                }
+            } catch (_: Exception) {}
+
+            // 2. Try Visual Match using MobileNetV4 ArcFace embeddings on segmented object
+            val candidates = embeddingDao.getAllEmbeddings()
+            if (candidates.isNotEmpty()) {
+                val segmentedObject = RoiProcessor.segmentProductObject(bitmap)
+                val queryEmbedding = posAnalyzer.embeddingEngine.extractEmbedding(segmentedObject)
+                val bestMatch = VectorSearchEngine.findBestMatch(queryEmbedding, candidates, threshold = 0.55f)
+                if (bestMatch != null) {
+                    val product = productRepository.getProductById(bestMatch.productId)
+                    if (product != null) {
+                        withContext(Dispatchers.Main) {
+                            hapticManager.pulseScan()
+                            soundPoolManager.playScanSuccess()
+                            _uiState.update { state ->
+                                state.copy(
+                                    cart = state.cart.addItem(product, 1.0),
+                                    toastMessage = "✓ Matched: ${product.name} (${(bestMatch.score * 100).toInt()}% conf)"
+                                )
+                            }
+                        }
+                        return@launch
+                    }
+                }
+            }
+
+            // 3. Fallback: Check if photo contains multi-line handwriting / receipt text
+            try {
+                val textRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                val textResult = Tasks.await(textRecognizer.process(inputImage), 1500L, TimeUnit.MILLISECONDS)
+                if (textResult.text.trim().length > 15) {
+                    withContext(Dispatchers.Main) {
+                        _uiState.update { it.copy(isSlipOcrDialogOpen = true) }
+                        handleSlipOcr(bitmap)
+                    }
+                    return@launch
+                }
+            } catch (_: Exception) {}
+
+            withContext(Dispatchers.Main) {
+                soundPoolManager.playErrorBuzz()
+                hapticManager.pulseError()
+                _uiState.update { it.copy(toastMessage = "No product or barcode recognized in photo. Try closer.") }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        try {
+            posAnalyzer.embeddingEngine.close()
+        } catch (_: Exception) {}
     }
 }

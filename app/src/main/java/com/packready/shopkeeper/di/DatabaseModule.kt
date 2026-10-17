@@ -32,6 +32,9 @@ object DatabaseModule {
     fun provideProductDao(database: AppDatabase): ProductDao = database.productDao()
 
     @Provides
+    fun provideEmbeddingDao(database: AppDatabase): com.packready.shopkeeper.data.local.dao.EmbeddingDao = database.embeddingDao()
+
+    @Provides
     fun provideSaleDao(database: AppDatabase): SaleDao = database.saleDao()
 
     @Provides

@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.packready.shopkeeper.data.local.dao.EmbeddingDao
 import com.packready.shopkeeper.data.local.dao.InvoiceDao
 import com.packready.shopkeeper.data.local.dao.KhataDao
 import com.packready.shopkeeper.data.local.dao.OutboxDao
@@ -15,6 +16,7 @@ import com.packready.shopkeeper.data.local.entity.InvoiceDocumentEntity
 import com.packready.shopkeeper.data.local.entity.InvoiceLineItemEntity
 import com.packready.shopkeeper.data.local.entity.KhataCustomerEntity
 import com.packready.shopkeeper.data.local.entity.KhataTransactionEntity
+import com.packready.shopkeeper.data.local.entity.ProductEmbeddingEntity
 import com.packready.shopkeeper.data.local.entity.ProductEntity
 import com.packready.shopkeeper.data.local.entity.ProductFtsEntity
 import com.packready.shopkeeper.data.local.entity.SaleItemEntity
@@ -34,15 +36,17 @@ import kotlinx.coroutines.launch
         KhataCustomerEntity::class,
         KhataTransactionEntity::class,
         InvoiceDocumentEntity::class,
-        InvoiceLineItemEntity::class
+        InvoiceLineItemEntity::class,
+        ProductEmbeddingEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun productDao(): ProductDao
+    abstract fun embeddingDao(): EmbeddingDao
     abstract fun saleDao(): SaleDao
     abstract fun khataDao(): KhataDao
     abstract fun outboxDao(): OutboxDao
@@ -61,6 +65,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
+                .fallbackToDestructiveMigration()
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)

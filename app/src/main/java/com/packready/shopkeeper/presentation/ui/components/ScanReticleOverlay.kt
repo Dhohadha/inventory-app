@@ -53,6 +53,7 @@ import com.packready.shopkeeper.presentation.theme.Terracotta400
 fun ScanReticleOverlay(
     isScanningActive: Boolean = true,
     lastScannedBarcode: String? = null,
+    showStatusBadge: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "laser_sweep")
@@ -81,11 +82,11 @@ fun ScanReticleOverlay(
             val canvasWidth = size.width
             val canvasHeight = size.height
 
-            // Dimensions of scanning window (responsive to aspect ratio)
-            val boxWidth = canvasWidth * 0.80f
-            val boxHeight = canvasHeight * 0.68f
+            // Dimensions of scanning window (responsive to aspect ratio with clearance for top/bottom controls)
+            val boxWidth = (canvasWidth * 0.76f).coerceAtMost(280.dp.toPx())
+            val boxHeight = (canvasHeight * 0.48f).coerceAtMost(boxWidth * 0.68f)
             val left = (canvasWidth - boxWidth) / 2f
-            val top = (canvasHeight - boxHeight) / 2f
+            val top = ((canvasHeight - boxHeight) / 2f - 14.dp.toPx()).coerceAtLeast(36.dp.toPx())
             val right = left + boxWidth
             val bottom = top + boxHeight
 
@@ -157,57 +158,108 @@ fun ScanReticleOverlay(
         }
 
         // Live Scanning Status Badge
-        Surface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 14.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = Roast900.copy(alpha = 0.90f),
-            shadowElevation = 6.dp,
-            border = androidx.compose.foundation.BorderStroke(1.dp, Caramel500.copy(alpha = 0.4f))
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+        if (showStatusBadge) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 14.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Roast900.copy(alpha = 0.90f),
+                shadowElevation = 6.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Caramel500.copy(alpha = 0.4f))
             ) {
-                if (lastScannedBarcode != null) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = Emerald500,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Scanned: $lastScannedBarcode",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Emerald500
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(Caramel400.copy(alpha = pulseAlpha))
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Default.QrCodeScanner,
-                        contentDescription = null,
-                        tint = Caramel400,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Desk Scanner Active",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
-                    )
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    if (lastScannedBarcode != null) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Emerald500,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Scanned: $lastScannedBarcode",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Emerald500
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Caramel400.copy(alpha = pulseAlpha))
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = null,
+                            tint = Caramel400,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Desk Scanner Active",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+/**
+ * Renders real-time bounding boxes around 4-5 items detected simultaneously on the counter desk.
+ */
+@Composable
+fun MultiObjectBoundingBoxOverlay(
+    overlays: List<com.packready.shopkeeper.data.vision.TrackedObjectOverlay>,
+    modifier: Modifier = Modifier
+) {
+    if (overlays.isEmpty()) return
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        for (overlay in overlays) {
+            val left = (overlay.boundingBox.left * size.width).coerceIn(0f, size.width)
+            val top = (overlay.boundingBox.top * size.height).coerceIn(0f, size.height)
+            val width = ((overlay.boundingBox.right - overlay.boundingBox.left) * size.width).coerceAtLeast(10f)
+            val height = ((overlay.boundingBox.bottom - overlay.boundingBox.top) * size.height).coerceAtLeast(10f)
+
+            val color = when (overlay.status) {
+                com.packready.shopkeeper.data.vision.ObjectScanStatus.SCANNED -> Emerald500
+                com.packready.shopkeeper.data.vision.ObjectScanStatus.SUGGESTED -> Caramel400
+                com.packready.shopkeeper.data.vision.ObjectScanStatus.PENDING -> Color.White.copy(alpha = 0.7f)
+                else -> Color.Gray.copy(alpha = 0.5f)
+            }
+
+            // Draw bounding rect
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(left, top),
+                size = Size(width, height),
+                cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx()),
+                style = Stroke(width = 2.5.dp.toPx())
+            )
+
+            // Draw subtle corner accents
+            val cornerLen = 14.dp.toPx()
+            val strokeW = 4.dp.toPx()
+
+            // Top-left
+            drawLine(color, Offset(left, top), Offset(left + cornerLen, top), strokeWidth = strokeW)
+            drawLine(color, Offset(left, top), Offset(left, top + cornerLen), strokeWidth = strokeW)
+
+            // Bottom-right
+            drawLine(color, Offset(left + width, top + height), Offset(left + width - cornerLen, top + height), strokeWidth = strokeW)
+            drawLine(color, Offset(left + width, top + height), Offset(left + width, top + height - cornerLen), strokeWidth = strokeW)
+        }
+    }
+}
+

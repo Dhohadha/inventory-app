@@ -47,15 +47,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import com.packready.shopkeeper.domain.model.Cart
 import com.packready.shopkeeper.domain.model.PaymentMethod
+import androidx.compose.ui.unit.sp
 import com.packready.shopkeeper.presentation.theme.Amber500
+import com.packready.shopkeeper.presentation.theme.Caramel400
 import com.packready.shopkeeper.presentation.theme.Caramel500
 import com.packready.shopkeeper.presentation.theme.Caramel600
 import com.packready.shopkeeper.presentation.theme.Emerald500
+import com.packready.shopkeeper.presentation.theme.Espresso800
+import com.packready.shopkeeper.presentation.theme.PackReadyShopkeeperTheme
 import com.packready.shopkeeper.presentation.theme.Roast800
 import com.packready.shopkeeper.presentation.theme.Roast900
+import com.packready.shopkeeper.presentation.ui.components.CameraCaptureMode
 import com.packready.shopkeeper.presentation.ui.components.DynamicUpiQrCard
+import com.packready.shopkeeper.presentation.ui.components.InAppCameraCaptureDialog
 import com.packready.shopkeeper.presentation.ui.components.PackReadyEmblem
 import com.packready.shopkeeper.presentation.ui.components.bouncingClickable
 import java.util.Locale
@@ -78,19 +95,36 @@ fun PaymentDialog(
     val cashReceived = cashReceivedInput.toDoubleOrNull() ?: 0.0
     val changeReturned = (cashReceived - grandTotal).coerceAtLeast(0.0)
 
+    var isCameraCaptureOpen by remember { mutableStateOf(false) }
+    var attachedBillBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    if (isCameraCaptureOpen) {
+        InAppCameraCaptureDialog(
+            mode = CameraCaptureMode.SINGLE_PHOTO,
+            title = "Capture Bill / Receipt Proof",
+            instructionText = "Point camera at bill receipt, counter slip or payment proof",
+            onPhotosCaptured = { list ->
+                attachedBillBitmap = list.firstOrNull()
+                isCameraCaptureOpen = false
+            },
+            onDismiss = { isCameraCaptureOpen = false }
+        )
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .padding(vertical = 16.dp),
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 12.dp,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-        ) {
+        PackReadyShopkeeperTheme(darkTheme = false) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.94f)
+                    .padding(vertical = 16.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -166,7 +200,108 @@ fun PaymentDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Optional Bill / Slip Photo Attachment
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (attachedBillBitmap == null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isCameraCaptureOpen = true }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoCamera,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Snap Bill / Slip Photo",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "Attach photo proof while giving the bill",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Open Camera",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Image(
+                                    bitmap = attachedBillBitmap!!.asImageBitmap(),
+                                    contentDescription = "Bill Proof",
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, Emerald500, RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Emerald500,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Bill Photo Attached",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Emerald500
+                                        )
+                                    }
+                                    Text(
+                                        text = "Recorded with transaction",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { attachedBillBitmap = null }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
 
                 // Action Confirmation Button
                 Button(
@@ -189,6 +324,7 @@ fun PaymentDialog(
         }
     }
 }
+}
 
 @Composable
 private fun PaymentMethodTabs(
@@ -202,39 +338,49 @@ private fun PaymentMethodTabs(
         Pair(PaymentMethod.CARD, Icons.Default.CreditCard)
     )
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        tabs.forEach { (method, icon) ->
-            val isSelected = selected == method
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                    .bouncingClickable { onSelect(method) }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = method.label,
-                        tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = method.label,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            tabs.forEach { (method, icon) ->
+                val isSelected = selected == method
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSelected) Espresso800 else Color.Transparent,
+                    shadowElevation = if (isSelected) 3.dp else 0.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSelect(method) }
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = method.label,
+                            tint = if (isSelected) Caramel400 else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = method.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            fontSize = 10.5.sp
+                        )
+                    }
                 }
             }
         }

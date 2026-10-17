@@ -1,7 +1,10 @@
 package com.packready.shopkeeper.data.repository
 
 import com.packready.shopkeeper.data.local.InitialCatalogData
+import com.packready.shopkeeper.data.local.MasterCatalogDataSource
+import com.packready.shopkeeper.data.local.dao.EmbeddingDao
 import com.packready.shopkeeper.data.local.dao.ProductDao
+import com.packready.shopkeeper.data.local.entity.ProductEmbeddingEntity
 import com.packready.shopkeeper.data.local.entity.ProductEntity
 import com.packready.shopkeeper.domain.model.Product
 import com.packready.shopkeeper.domain.model.ProductCategory
@@ -13,7 +16,9 @@ import javax.inject.Singleton
 
 @Singleton
 class ProductRepositoryImpl @Inject constructor(
-    private val productDao: ProductDao
+    private val productDao: ProductDao,
+    private val embeddingDao: EmbeddingDao,
+    private val masterCatalogDataSource: MasterCatalogDataSource
 ) : ProductRepository {
 
     override fun getAllProducts(): Flow<List<Product>> {
@@ -54,10 +59,10 @@ class ProductRepositoryImpl @Inject constructor(
         val local = productDao.getProductByBarcode(barcode)
         if (local != null) return local.toDomain()
 
-        // Fallback: check global Kirana reference catalog
+        // Fallback: check offline 10,000 FMCG master catalog
         val fallback = lookupGlobalCatalog(barcode)
         if (fallback != null) {
-            // Auto-cache into local DB
+            // Auto-cache into local DB so subsequent scans hit local store inventory directly
             saveProduct(fallback)
             return fallback
         }
@@ -81,6 +86,35 @@ class ProductRepositoryImpl @Inject constructor(
     }
 
     override suspend fun lookupGlobalCatalog(barcode: String): Product? {
+        val master = masterCatalogDataSource.lookupByBarcode(barcode)
+        if (master != null) return master
+
         return InitialCatalogData.sampleProducts.find { it.barcode == barcode || it.id == barcode }
+    }
+
+    override suspend fun searchGlobalCatalog(query: String, limit: Int): List<Product> {
+        return masterCatalogDataSource.searchMasterCatalog(query, limit)
+    }
+
+    override suspend fun getGlobalCatalogCount(): Int {
+        val count = masterCatalogDataSource.getMasterCatalogCount()
+        return if (count > 0) count else InitialCatalogData.sampleProducts.size
+    }
+
+    override suspend fun saveProductEmbeddings(productId: String, embeddings: List<Pair<String, FloatArray>>) {
+        val entities = embeddings.map { (angle, vector) ->
+            ProductEmbeddingEntity(
+                productId = productId,
+                angleTag = angle,
+                vector = vector
+            )
+        }
+        embeddingDao.insertAll(entities)
+    }
+
+    override suspend fun getProductEmbeddings(productId: String): List<Pair<String, FloatArray>> {
+        return embeddingDao.getEmbeddingsForProduct(productId).map {
+            Pair(it.angleTag, it.vector)
+        }
     }
 }

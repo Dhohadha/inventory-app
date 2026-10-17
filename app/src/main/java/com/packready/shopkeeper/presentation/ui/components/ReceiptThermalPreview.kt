@@ -1,5 +1,6 @@
 package com.packready.shopkeeper.presentation.ui.components
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
@@ -242,30 +243,11 @@ fun ReceiptThermalPreviewDialog(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            val phone = sale.customerPhone?.filter { it.isDigit() } ?: ""
-                            val msg = "Thank you for shopping at $storeName!%0AInvoice: ${sale.invoiceNumber}%0ATotal: ₹${sale.grandTotal}"
-                            val uri = if (phone.isNotBlank()) {
-                                Uri.parse("https://api.whatsapp.com/send?phone=91$phone&text=$msg")
-                            } else {
-                                Uri.parse("https://api.whatsapp.com/send?text=$msg")
-                            }
-                            val intent = Intent(Intent.ACTION_VIEW, uri)
-                            context.startActivity(intent)
+                            shareBillViaWhatsApp(context, sale, storeName)
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
-                            .bouncingClickable {
-                                val phone = sale.customerPhone?.filter { it.isDigit() } ?: ""
-                                val msg = "Thank you for shopping at $storeName!%0AInvoice: ${sale.invoiceNumber}%0ATotal: ₹${sale.grandTotal}"
-                                val uri = if (phone.isNotBlank()) {
-                                    Uri.parse("https://api.whatsapp.com/send?phone=91$phone&text=$msg")
-                                } else {
-                                    Uri.parse("https://api.whatsapp.com/send?text=$msg")
-                                }
-                                val intent = Intent(Intent.ACTION_VIEW, uri)
-                                context.startActivity(intent)
-                            },
+                            .height(48.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -278,8 +260,7 @@ fun ReceiptThermalPreviewDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
-                            .bouncingClickable(onClick = onPrintBluetooth),
+                            .height(48.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(imageVector = Icons.Default.Print, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -289,5 +270,91 @@ fun ReceiptThermalPreviewDialog(
                 }
             }
         }
+    }
+}
+
+/**
+ * Builds clean, comprehensive WhatsApp formatted message listing every single product,
+ * quantities, rates, subtotal, discounts, GST, and final payment details.
+ */
+fun buildWhatsAppBillMessage(sale: SaleTransaction, storeName: String = "PACKREADY MART"): String {
+    val sdf = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault())
+    val dateStr = sdf.format(Date(sale.timestamp))
+    val sb = StringBuilder()
+
+    sb.appendLine("🧾 *$storeName*")
+    sb.appendLine("📍 Retail Counter Invoice")
+    sb.appendLine("--------------------------------")
+    sb.appendLine("📄 *Invoice:* ${sale.invoiceNumber}")
+    sb.appendLine("📅 *Date:* $dateStr")
+    if (!sale.customerName.isNullOrBlank()) {
+        val phoneSuffix = if (!sale.customerPhone.isNullOrBlank()) " (${sale.customerPhone})" else ""
+        sb.appendLine("👤 *Customer:* ${sale.customerName}$phoneSuffix")
+    }
+    sb.appendLine("--------------------------------")
+    sb.appendLine("🛒 *ITEMS PURCHASED (${sale.items.size}):*")
+
+    sale.items.forEachIndexed { index, item ->
+        val qty = if (item.quantity % 1.0 == 0.0) {
+            item.quantity.toInt().toString()
+        } else {
+            String.format(Locale.US, "%.2f", item.quantity)
+        }
+        val unitLabel = if (item.unit.isNotBlank() && item.unit != "pcs") " ${item.unit}" else ""
+        val rate = String.format(Locale.US, "%.2f", item.unitPrice)
+        val itemTotal = String.format(Locale.US, "%.2f", item.total)
+
+        sb.appendLine("${index + 1}. *${item.productName}*")
+        sb.appendLine("   $qty$unitLabel × ₹$rate = *₹$itemTotal*")
+        if (item.discount > 0) {
+            sb.appendLine("   (Item Discount: -₹${String.format(Locale.US, "%.2f", item.discount)})")
+        }
+    }
+
+    sb.appendLine("--------------------------------")
+    sb.appendLine("Subtotal: ₹${String.format(Locale.US, "%.2f", sale.subtotal)}")
+    if (sale.discountAmount > 0) {
+        sb.appendLine("Discount: -₹${String.format(Locale.US, "%.2f", sale.discountAmount)}")
+    }
+    if (sale.taxAmount > 0) {
+        sb.appendLine("GST / Tax: +₹${String.format(Locale.US, "%.2f", sale.taxAmount)}")
+    }
+    sb.appendLine("💰 *GRAND TOTAL: ₹${String.format(Locale.US, "%.2f", sale.grandTotal)}*")
+    sb.appendLine("💳 *Payment Mode:* ${sale.paymentMethod.label}")
+    if (sale.paymentMethod.name == "CASH" && sale.cashReceived > 0) {
+        sb.appendLine("💵 Cash Received: ₹${String.format(Locale.US, "%.2f", sale.cashReceived)}")
+        if (sale.changeReturned > 0) {
+            sb.appendLine("🪙 Change Returned: ₹${String.format(Locale.US, "%.2f", sale.changeReturned)}")
+        }
+    }
+    sb.appendLine("================================")
+    sb.appendLine("🙏 *Thank you for shopping with us!*")
+    sb.appendLine("Please visit again!")
+    return sb.toString()
+}
+
+/**
+ * Dispatches the formatted bill directly to WhatsApp, with graceful fallback to system share sheet.
+ */
+fun shareBillViaWhatsApp(context: Context, sale: SaleTransaction, storeName: String) {
+    val message = buildWhatsAppBillMessage(sale, storeName)
+    val phone = sale.customerPhone?.filter { it.isDigit() }?.takeLast(10) ?: ""
+    val encodedMessage = Uri.encode(message)
+
+    val uri = if (phone.length == 10) {
+        Uri.parse("https://api.whatsapp.com/send?phone=91$phone&text=$encodedMessage")
+    } else {
+        Uri.parse("https://api.whatsapp.com/send?text=$encodedMessage")
+    }
+
+    val intent = Intent(Intent.ACTION_VIEW, uri)
+    try {
+        context.startActivity(intent)
+    } catch (_: Exception) {
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, message)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share Bill"))
     }
 }

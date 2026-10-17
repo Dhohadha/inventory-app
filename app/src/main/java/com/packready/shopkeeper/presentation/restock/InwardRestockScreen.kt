@@ -2,6 +2,7 @@ package com.packready.shopkeeper.presentation.restock
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -10,12 +11,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -47,12 +50,15 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -266,44 +272,27 @@ fun InwardRestockScreen(
                 } else {
                     // Store Inventory & Low Stock Hub
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Segmented Category Tabs
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .padding(3.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            val tabs = listOf("Store Catalog (${uiState.allProducts.size})", "Low Stock Alerts (${uiState.lowStockProducts.size})")
-                            tabs.forEachIndexed { index, title ->
-                                val isSelected = selectedTab == index
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                        .bouncingClickable { selectedTab = index }
-                                        .padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = title,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                        // Animated Sliding Tab Selector for Store Catalog & Low Stock Alerts
+                        RestockSlidingTabSelector(
+                            selectedTab = selectedTab,
+                            catalogCount = uiState.allProducts.size,
+                            lowStockCount = uiState.lowStockProducts.size,
+                            onTabSelected = { selectedTab = it }
+                        )
+
+                        val currentTabProducts = if (selectedTab == 0) uiState.allProducts else uiState.lowStockProducts
+                        val displayProducts = remember(currentTabProducts, uiState.searchQuery) {
+                            if (uiState.searchQuery.isBlank()) {
+                                currentTabProducts
+                            } else {
+                                val q = uiState.searchQuery.trim()
+                                currentTabProducts.filter {
+                                    it.name.contains(q, ignoreCase = true) ||
+                                    it.barcode.contains(q, ignoreCase = true) ||
+                                    it.brand.contains(q, ignoreCase = true) ||
+                                    it.subCategory.contains(q, ignoreCase = true)
                                 }
                             }
-                        }
-
-                        val displayProducts = if (uiState.searchQuery.isNotBlank()) {
-                            uiState.searchResults
-                        } else if (selectedTab == 0) {
-                            uiState.allProducts
-                        } else {
-                            uiState.lowStockProducts
                         }
 
                         if (displayProducts.isEmpty()) {
@@ -334,10 +323,10 @@ fun InwardRestockScreen(
     if (uiState.isQuickAddDialogOpen) {
         QuickAddProductDialog(
             initialBarcode = uiState.scannedBarcode,
-            onConfirm = { name, barcode, brand, cat, unit, cp, sp, mrp, stock, attrs ->
+            onConfirm = { name, barcode, brand, cat, unit, cp, sp, mrp, stock, attrs, embeddings ->
                 viewModel.onEvent(
                     RestockUiEvent.CreateNewProduct(
-                        name, barcode, brand, cat, unit, cp, sp, mrp, stock, attrs
+                        name, barcode, brand, cat, unit, cp, sp, mrp, stock, attrs, embeddings
                     )
                 )
             },
@@ -440,7 +429,7 @@ private fun RestockFormCard(
                         Surface(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .bouncingClickable { onQuantityChange(pack) },
+                                .bouncingClickable { onQuantityChange(quantityToAdd + pack) },
                             shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -455,6 +444,38 @@ private fun RestockFormCard(
                         }
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Smooth Quantity Slider for rapid restock adjustment
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "1",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Slider(
+                    value = quantityToAdd.toFloat().coerceIn(1f, 100f),
+                    onValueChange = { onQuantityChange(it.roundToInt().toDouble()) },
+                    valueRange = 1f..100f,
+                    steps = 98,
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp)
+                )
+                Text(
+                    text = "100+",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -612,6 +633,136 @@ private fun EmptyCatalogState(
             Icon(imageVector = Icons.Default.QrCodeScanner, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(6.dp))
             Text("Open Barcode Scanner", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun RestockSlidingTabSelector(
+    selectedTab: Int,
+    catalogCount: Int,
+    lowStockCount: Int,
+    onTabSelected: (Int) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp)
+        ) {
+            val tabWidth = maxWidth / 2
+            val animatedOffset by animateDpAsState(
+                targetValue = if (selectedTab == 0) 0.dp else tabWidth,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                ),
+                label = "sliding_tab_indicator"
+            )
+
+            // Animated Sliding Pill Background
+            Box(
+                modifier = Modifier
+                    .width(tabWidth)
+                    .height(40.dp)
+                    .padding(horizontal = 2.dp)
+                    .offset(x = animatedOffset)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        if (selectedTab == 1 && lowStockCount > 0) Crimson500 else MaterialTheme.colorScheme.primary
+                    )
+            )
+
+            // Clickable Tab Labels on Top
+            Row(modifier = Modifier.fillMaxWidth()) {
+                // Tab 0: Store Catalog
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onTabSelected(0) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "Store Catalog",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = CircleShape,
+                            color = if (selectedTab == 0) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.padding(2.dp)
+                        ) {
+                            Text(
+                                text = "$catalogCount",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedTab == 0) Color.White else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Tab 1: Low Stock Alerts
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onTabSelected(1) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        if (lowStockCount > 0) {
+                            Icon(
+                                imageVector = Icons.Default.WarningAmber,
+                                contentDescription = null,
+                                tint = if (selectedTab == 1) Color.White else Crimson500,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text(
+                            text = "Low Stock Alerts",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Medium,
+                            color = if (selectedTab == 1) Color.White else if (lowStockCount > 0) Crimson500 else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = CircleShape,
+                            color = if (selectedTab == 1) Color.White.copy(alpha = 0.25f) else if (lowStockCount > 0) Crimson500.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.padding(2.dp)
+                        ) {
+                            Text(
+                                text = "$lowStockCount",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedTab == 1) Color.White else if (lowStockCount > 0) Crimson500 else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

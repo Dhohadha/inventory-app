@@ -53,6 +53,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +83,22 @@ fun InvoiceReconcilerScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var isCameraCaptureOpen by remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    if (isCameraCaptureOpen) {
+        com.packready.shopkeeper.presentation.ui.components.InAppCameraCaptureDialog(
+            mode = com.packready.shopkeeper.presentation.ui.components.CameraCaptureMode.SINGLE_PHOTO,
+            title = "Snap Wholesale Invoice",
+            instructionText = "Point camera at distributor B2B tax invoice",
+            onPhotosCaptured = { list ->
+                list.firstOrNull()?.let { bmp ->
+                    viewModel.onEvent(InvoiceUiEvent.ProcessInvoiceImage(bmp))
+                }
+                isCameraCaptureOpen = false
+            },
+            onDismiss = { isCameraCaptureOpen = false }
+        )
+    }
 
     val photoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -132,14 +149,17 @@ fun InvoiceReconcilerScreen(
                 },
                 actions = {
                     Button(
-                        onClick = { photoLauncher.launch("image/*") },
+                        onClick = { isCameraCaptureOpen = true },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.bouncingClickable { photoLauncher.launch("image/*") }
+                        modifier = Modifier.bouncingClickable { isCameraCaptureOpen = true }
                     ) {
                         Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Upload Bill", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Snap Bill", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    IconButton(onClick = { photoLauncher.launch("image/*") }) {
+                        Icon(imageVector = Icons.Default.PhotoLibrary, contentDescription = "Gallery", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -191,7 +211,10 @@ fun InvoiceReconcilerScreen(
             } else {
                 // Invoices History / Empty State
                 if (uiState.invoices.isEmpty()) {
-                    EmptyInvoiceState(onUploadClick = { photoLauncher.launch("image/*") })
+                    EmptyInvoiceState(
+                        onSnapClick = { isCameraCaptureOpen = true },
+                        onUploadClick = { photoLauncher.launch("image/*") }
+                    )
                 } else {
                     InvoiceHistoryList(
                         invoices = uiState.invoices,
@@ -362,7 +385,10 @@ private fun InvoiceItemRow(
 }
 
 @Composable
-private fun EmptyInvoiceState(onUploadClick: () -> Unit) {
+private fun EmptyInvoiceState(
+    onSnapClick: () -> Unit,
+    onUploadClick: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -397,15 +423,25 @@ private fun EmptyInvoiceState(onUploadClick: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp, bottom = 18.dp)
         )
-        Button(
-            onClick = onUploadClick,
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.bouncingClickable(onClick = onUploadClick)
-        ) {
-            Icon(imageVector = Icons.Default.PhotoLibrary, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Upload Distributor Bill", color = Color.White, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(
+                onClick = onSnapClick,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.bouncingClickable(onClick = onSnapClick)
+            ) {
+                Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Snap with Camera", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+            androidx.compose.material3.OutlinedButton(
+                onClick = onUploadClick,
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(imageVector = Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Gallery")
+            }
         }
     }
 }

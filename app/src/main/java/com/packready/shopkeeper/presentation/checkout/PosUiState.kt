@@ -28,7 +28,11 @@ data class PosUiState(
     val customerNameInput: String = "",
     val customerPhoneInput: String = "",
     val discountInput: String = "",
-    val geminiApiKey: String = ""
+    val geminiApiKey: String = "",
+    val suggestedProduct: Product? = null,
+    val suggestionConfidence: Float = 0f,
+    val trackedOverlays: List<com.packready.shopkeeper.data.vision.TrackedObjectOverlay> = emptyList(),
+    val telemetry: com.packready.shopkeeper.data.vision.PosStreamTelemetry? = null
 )
 
 sealed interface PosUiEvent {
@@ -37,6 +41,13 @@ sealed interface PosUiEvent {
     data class SetCameraActive(val isActive: Boolean) : PosUiEvent
 
     data class OnBarcodeScanned(val barcode: String) : PosUiEvent
+    data class OnVisualProductMatched(val product: Product, val confidence: Float, val method: String) : PosUiEvent
+    data class OnProductSuggested(val product: Product, val confidence: Float) : PosUiEvent
+    object DismissSuggestedProduct : PosUiEvent
+    data class UpdatePosTelemetry(
+        val overlays: List<com.packready.shopkeeper.data.vision.TrackedObjectOverlay>,
+        val telemetry: com.packready.shopkeeper.data.vision.PosStreamTelemetry
+    ) : PosUiEvent
     data class AddProductToCart(val product: Product, val qtyDelta: Double = 1.0) : PosUiEvent
     data class UpdateCartItemQuantity(val productId: String, val newQty: Double) : PosUiEvent
     data class RemoveCartItem(val productId: String) : PosUiEvent
@@ -61,6 +72,9 @@ sealed interface PosUiEvent {
     data class ProcessSlipImage(val bitmap: Bitmap) : PosUiEvent
     data class ToggleSlipItemSelection(val index: Int) : PosUiEvent
     object AddMatchedSlipItemsToCart : PosUiEvent
+
+    // Photo Capture at POS
+    data class ProcessCapturedPosPhoto(val bitmap: Bitmap) : PosUiEvent
 
     // Toast/Error
     object ClearMessages : PosUiEvent

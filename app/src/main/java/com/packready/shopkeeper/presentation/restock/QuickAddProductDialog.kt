@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -57,8 +58,36 @@ import com.packready.shopkeeper.domain.model.DynamicAttributes
 import com.packready.shopkeeper.domain.model.ProductCategory
 import com.packready.shopkeeper.presentation.theme.Emerald500
 import com.packready.shopkeeper.presentation.theme.ForestGreen600
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import com.packready.shopkeeper.data.vision.MobileNetV4EmbeddingEngine
+import com.packready.shopkeeper.data.vision.PackagingOcrParser
+import com.packready.shopkeeper.data.vision.RoiProcessor
+import com.packready.shopkeeper.presentation.theme.Roast900
+import com.packready.shopkeeper.presentation.ui.components.CameraCaptureMode
+import com.packready.shopkeeper.presentation.ui.components.InAppCameraCaptureDialog
 import com.packready.shopkeeper.presentation.ui.components.PackReadyEmblem
 import com.packready.shopkeeper.presentation.ui.components.bouncingClickable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,10 +103,14 @@ fun QuickAddProductDialog(
         sellingPrice: Double,
         mrp: Double,
         initialStock: Double,
-        attributes: DynamicAttributes?
+        attributes: DynamicAttributes?,
+        visualEmbeddings: List<Pair<String, FloatArray>>
     ) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var barcode by remember { mutableStateOf(initialBarcode ?: "890${(1000000000..9999999999).random()}") }
     var name by remember { mutableStateOf("") }
     var brand by remember { mutableStateOf("") }
@@ -97,6 +130,97 @@ fun QuickAddProductDialog(
     var fragrance by remember { mutableStateOf("") }
     var size by remember { mutableStateOf("") }
     var grainGrade by remember { mutableStateOf("") }
+
+    // AI Photo Extraction State
+    var isAiScanning by remember { mutableStateOf(false) }
+    var aiStatusMessage by remember { mutableStateOf<String?>(null) }
+    var visualEmbeddings by remember { mutableStateOf<List<Pair<String, FloatArray>>>(emptyList()) }
+    var isCameraCaptureOpen by remember { mutableStateOf(false) }
+    var capturedPhotos by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var hasSubmittedPhotos by remember { mutableStateOf(false) }
+
+    fun processPackagingBitmaps(bitmaps: List<Bitmap>) {
+        if (bitmaps.isEmpty()) return
+        isAiScanning = true
+        aiStatusMessage = "Detecting & segmenting packaging objects, then extracting OCR & visual embeddings..."
+        coroutineScope.launch {
+            try {
+                // Step 1: Object detection segmentation to isolate product packaging from background
+                val segmentedBitmaps = withContext(Dispatchers.Default) {
+                    bitmaps.map { bmp -> RoiProcessor.segmentProductObject(bmp) }
+                }
+
+                // Step 2: OCR on segmented packaging images
+                val parser = PackagingOcrParser()
+                val parsed = parser.parsePackagingImages(segmentedBitmaps)
+
+                parsed.detectedProductName?.let { name = it }
+                parsed.detectedBrand?.let { brand = it }
+                parsed.detectedMrp?.let { mrp = it.toString() }
+                parsed.detectedCostPrice?.let { costPrice = it.toString() }
+                parsed.detectedSellingPrice?.let { sellingPrice = it.toString() }
+                parsed.detectedNetQuantity?.let { netWeight = it }
+                unit = parsed.detectedUnit
+                parsed.detectedCategory?.let { selectedCategory = it }
+                isVegetarian = parsed.isVegetarian
+
+                // Step 3: Extract low-spec 512-D MobileNetV4 ArcFace embeddings on segmented object
+                val embeddingEngine = MobileNetV4EmbeddingEngine(context)
+                val embeddings = withContext(Dispatchers.Default) {
+                    segmentedBitmaps.mapIndexed { idx, bmp ->
+                        val tag = when (idx) {
+                            0 -> "FRONT"
+                            1 -> "BACK"
+                            else -> "DETAIL_$idx"
+                        }
+                        Pair(tag, embeddingEngine.extractEmbedding(bmp))
+                    }
+                }
+                visualEmbeddings = embeddings
+                hasSubmittedPhotos = true
+
+                aiStatusMessage = "✓ Extracted: ${parsed.detectedProductName ?: "Product"} • ${embeddings.size} Object-Segmented Visual Embeddings Enrolled"
+            } catch (e: Exception) {
+                aiStatusMessage = "Error processing photos: ${e.message}"
+            } finally {
+                isAiScanning = false
+            }
+        }
+    }
+
+    if (isCameraCaptureOpen) {
+        InAppCameraCaptureDialog(
+            mode = CameraCaptureMode.MULTI_PHOTO,
+            title = "Snap Product Photos",
+            instructionText = "Step 1: Snap Front packaging • Step 2: Snap Back packaging",
+            onPhotosCaptured = { bitmaps ->
+                capturedPhotos = bitmaps
+                isCameraCaptureOpen = false
+                hasSubmittedPhotos = false
+                aiStatusMessage = "Captured ${bitmaps.size} packaging photo(s). Review and tap 'Submit Photos' to run OCR & Object Segmentation."
+            },
+            onDismiss = { isCameraCaptureOpen = false }
+        )
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            coroutineScope.launch {
+                val bitmaps = withContext(Dispatchers.IO) {
+                    uris.mapNotNull { uri ->
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            BitmapFactory.decodeStream(stream)
+                        }
+                    }
+                }
+                capturedPhotos = bitmaps
+                hasSubmittedPhotos = false
+                aiStatusMessage = "Selected ${bitmaps.size} packaging photo(s). Review and tap 'Submit Photos' to run OCR & Object Segmentation."
+            }
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -134,6 +258,203 @@ fun QuickAddProductDialog(
                     }
                     IconButton(onClick = onDismiss) {
                         Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // AI SMART AUTO-FILL CARD
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "AI Photo Auto-Fill & Visual Enrollment",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Snap or select packaging photos (Front, Back). The system extracts title, brand, MRP, net qty via OCR and saves visual embeddings for POS recognition.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Captured Photo Thumbnails
+                        if (capturedPhotos.isNotEmpty()) {
+                            LazyRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                itemsIndexed(capturedPhotos) { idx, bmp ->
+                                    val tag = when (idx) {
+                                        0 -> "FRONT"
+                                        1 -> "BACK"
+                                        else -> "DETAIL ${idx + 1}"
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(68.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .border(1.5.dp, Emerald500, RoundedCornerShape(10.dp))
+                                    ) {
+                                        Image(
+                                            bitmap = bmp.asImageBitmap(),
+                                            contentDescription = tag,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Surface(
+                                            color = Roast900.copy(alpha = 0.85f),
+                                            shape = RoundedCornerShape(bottomStart = 10.dp, bottomEnd = 10.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .align(Alignment.BottomCenter)
+                                        ) {
+                                            Text(
+                                                text = tag,
+                                                color = Color.White,
+                                                fontSize = 8.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(vertical = 1.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Action Buttons: Explicit Submit Photos + Camera & Gallery Capture
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (capturedPhotos.isNotEmpty()) {
+                                // Explicit Submit Photos Button - Only runs OCR and Segmentation on tap
+                                Button(
+                                    onClick = { processPackagingBitmaps(capturedPhotos) },
+                                    enabled = !isAiScanning,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Emerald500),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                        .bouncingClickable { processPackagingBitmaps(capturedPhotos) }
+                                ) {
+                                    if (isAiScanning) {
+                                        CircularProgressIndicator(
+                                            color = Color.White,
+                                            strokeWidth = 2.dp,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            "Segmenting Object & Extracting OCR...",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = if (hasSubmittedPhotos) "Re-Submit Photos & Re-Analyze" else "Submit Photos (Run OCR & Object Segmentation)",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { isCameraCaptureOpen = true },
+                                    enabled = !isAiScanning,
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (capturedPhotos.isEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                        .bouncingClickable { isCameraCaptureOpen = true }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CameraAlt,
+                                        contentDescription = null,
+                                        tint = if (capturedPhotos.isEmpty()) Color.White else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (capturedPhotos.isEmpty()) "Open Camera" else "Retake Camera",
+                                        color = if (capturedPhotos.isEmpty()) Color.White else MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                OutlinedButton(
+                                    onClick = { photoPickerLauncher.launch("image/*") },
+                                    enabled = !isAiScanning,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                        .bouncingClickable { photoPickerLauncher.launch("image/*") }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhotoLibrary,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("From Gallery", fontSize = 12.sp)
+                                }
+                            }
+                        }
+
+                        if (aiStatusMessage != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = aiStatusMessage!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (aiStatusMessage!!.startsWith("✓")) Emerald500 else MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
 
@@ -477,7 +798,8 @@ fun QuickAddProductDialog(
                             sp,
                             m,
                             st,
-                            dynAttrs
+                            dynAttrs,
+                            visualEmbeddings
                         )
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -511,7 +833,8 @@ fun QuickAddProductDialog(
                                 sp,
                                 m,
                                 st,
-                                dynAttrs
+                                dynAttrs,
+                                visualEmbeddings
                             )
                         }
                 ) {
