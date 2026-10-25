@@ -1392,13 +1392,20 @@ private fun SpecRow(label: String, value: String) {
 private fun getCategoryGradient(category: ProductCategory): Brush {
     return when (category) {
         ProductCategory.FOOD_GROCERY -> Brush.verticalGradient(listOf(Caramel500, Caramel400))
+        ProductCategory.SNACKS_PACKAGED -> Brush.verticalGradient(listOf(Color(0xFFFF9800), Color(0xFFFFB74D)))
         ProductCategory.BEVERAGES -> Brush.verticalGradient(listOf(Color(0xFF0288D1), Color(0xFF26C6DA)))
+        ProductCategory.DAIRY_REFRIGERATED -> Brush.verticalGradient(listOf(Color(0xFF00ACC1), Color(0xFF80DEEA)))
+        ProductCategory.LOOSE_STAPLES -> Brush.verticalGradient(listOf(Amber500, Color(0xFFFFB74D)))
+        ProductCategory.SPICES_MASALAS -> Brush.verticalGradient(listOf(Color(0xFFD84315), Color(0xFFFF8A65)))
+        ProductCategory.INSTANT_FOOD -> Brush.verticalGradient(listOf(Color(0xFFF57C00), Color(0xFFFFCC80)))
         ProductCategory.PERSONAL_CARE -> Brush.verticalGradient(listOf(Color(0xFF8E24AA), Color(0xFFBA68C8)))
         ProductCategory.HOUSEHOLD_CLEANING -> Brush.verticalGradient(listOf(Color(0xFF3949AB), Color(0xFF5C6BC0)))
-        ProductCategory.LOOSE_STAPLES -> Brush.verticalGradient(listOf(Amber500, Color(0xFFFFB74D)))
-        ProductCategory.ELECTRONICS_ELECTRICAL -> Brush.verticalGradient(listOf(Color(0xFF00897B), Color(0xFF4DB6AC)))
-        ProductCategory.APPAREL_FOOTWEAR -> Brush.verticalGradient(listOf(Color(0xFFE64A19), Color(0xFFFF7043)))
         ProductCategory.OTC_WELLNESS -> Brush.verticalGradient(listOf(Emerald500, ForestGreen600))
+        ProductCategory.ELECTRONICS_ELECTRICAL -> Brush.verticalGradient(listOf(Color(0xFF00897B), Color(0xFF4DB6AC)))
+        ProductCategory.STATIONERY_OFFICE -> Brush.verticalGradient(listOf(Color(0xFF5E35B1), Color(0xFF9575CD)))
+        ProductCategory.BABY_CARE -> Brush.verticalGradient(listOf(Color(0xFFEC407A), Color(0xFFF48FB1)))
+        ProductCategory.PET_CARE -> Brush.verticalGradient(listOf(Color(0xFF6D4C41), Color(0xFFA1887F)))
+        ProductCategory.APPAREL_FOOTWEAR -> Brush.verticalGradient(listOf(Color(0xFFE64A19), Color(0xFFFF7043)))
         ProductCategory.OTHER -> Brush.verticalGradient(listOf(Roast900, Color(0xFF5D4037)))
     }
 }
@@ -1406,13 +1413,21 @@ private fun getCategoryGradient(category: ProductCategory): Brush {
 private fun getCategoryIcon(category: ProductCategory): ImageVector {
     return when (category) {
         ProductCategory.FOOD_GROCERY -> Icons.Default.LocalMall
+        ProductCategory.SNACKS_PACKAGED -> Icons.Default.LocalMall
         ProductCategory.BEVERAGES -> Icons.Default.LocalDrink
+        ProductCategory.DAIRY_REFRIGERATED -> Icons.Default.LocalDrink
+        ProductCategory.LOOSE_STAPLES -> Icons.Default.LocalMall
+        ProductCategory.SPICES_MASALAS -> Icons.Default.LocalMall
+        ProductCategory.INSTANT_FOOD -> Icons.Default.LocalMall
         ProductCategory.PERSONAL_CARE -> Icons.Default.Category
         ProductCategory.HOUSEHOLD_CLEANING -> Icons.Default.Inventory2
-        ProductCategory.LOOSE_STAPLES -> Icons.Default.LocalMall
-        ProductCategory.ELECTRONICS_ELECTRICAL -> Icons.Default.Category
-        ProductCategory.APPAREL_FOOTWEAR -> Icons.Default.LocalMall
         ProductCategory.OTC_WELLNESS -> Icons.Default.Category
+        ProductCategory.ELECTRONICS_ELECTRICAL -> Icons.Default.Category
+        ProductCategory.STATIONERY_OFFICE -> Icons.Default.Category
+        ProductCategory.BABY_CARE -> Icons.Default.Category
+        ProductCategory.PET_CARE -> Icons.Default.Category
+        ProductCategory.APPAREL_FOOTWEAR -> Icons.Default.LocalMall
         ProductCategory.OTHER -> Icons.Default.Category
     }
 }
+

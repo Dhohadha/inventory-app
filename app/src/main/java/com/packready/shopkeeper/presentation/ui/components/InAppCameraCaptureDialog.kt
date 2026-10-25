@@ -98,18 +98,24 @@ import kotlinx.coroutines.delay
 import java.util.concurrent.Executors
 
 enum class CameraCaptureMode {
-    SINGLE_PHOTO, // For Bill Slip OCR, Invoice, or Payment Proof
-    MULTI_PHOTO   // For Product Packaging Enrollment (Front, Back, Details)
+    SINGLE_PHOTO,      // For Bill Slip OCR, Invoice, or Payment Proof
+    MULTI_PHOTO,       // For Product Packaging Enrollment (Front, Back, Details)
+    ENROLL_FRONT_BACK  // 2-Photo guided enrollment: Step 1 Front, Step 2 Back
 }
 
 @Composable
 fun InAppCameraCaptureDialog(
     mode: CameraCaptureMode = CameraCaptureMode.SINGLE_PHOTO,
-    title: String = if (mode == CameraCaptureMode.MULTI_PHOTO) "Capture Packaging Photos" else "Document & Bill Camera",
+    title: String = when (mode) {
+        CameraCaptureMode.ENROLL_FRONT_BACK -> "Smart 2-Photo AI Auto-Enroll"
+        CameraCaptureMode.MULTI_PHOTO -> "Capture Packaging Photos"
+        else -> "Document & Bill Camera"
+    },
     instructionText: String? = null,
     onPhotosCaptured: (List<Bitmap>) -> Unit,
     onDismiss: () -> Unit
 ) {
+
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val haptic = LocalHapticFeedback.current
@@ -441,12 +447,20 @@ fun InAppCameraCaptureDialog(
                                 .padding(bottom = 12.dp)
                         ) {
                             Text(
-                                text = if (mode == CameraCaptureMode.MULTI_PHOTO) "Fit item inside packaging frame" else "Align document inside frame",
+                                text = when (mode) {
+                                    CameraCaptureMode.ENROLL_FRONT_BACK -> {
+                                        if (capturedBitmaps.isEmpty()) "Step 1/2: Fit FRONT side (Brand & Title)"
+                                        else "Step 2/2: Fit BACK side (Barcode, QR, MRP & Expiry)"
+                                    }
+                                    CameraCaptureMode.MULTI_PHOTO -> "Fit item inside packaging frame"
+                                    else -> "Align document inside frame"
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.White.copy(alpha = 0.85f),
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                 fontSize = 10.5.sp
                             )
+
                         }
                     }
                 }
@@ -576,8 +590,64 @@ fun InAppCameraCaptureDialog(
                             }
                         }
 
-                        // Guidance Step Pills for MULTI_PHOTO Mode
-                        if (mode == CameraCaptureMode.MULTI_PHOTO) {
+                        // Guidance Step Pills
+                        if (mode == CameraCaptureMode.ENROLL_FRONT_BACK) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val stepCount = capturedBitmaps.size
+                                val steps = listOf(
+                                    "1. Front (Brand & Name)" to (stepCount == 0),
+                                    "2. Back (Barcode & Expiry)" to (stepCount == 1)
+                                )
+
+                                steps.forEachIndexed { idx, (label, isCurrent) ->
+                                    val isCompleted = stepCount > idx
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = when {
+                                            isCurrent -> Color(0xFF7C3AED).copy(alpha = 0.35f)
+                                            isCompleted -> Emerald500.copy(alpha = 0.25f)
+                                            else -> Color.White.copy(alpha = 0.08f)
+                                        },
+                                        border = BorderStroke(
+                                            1.dp,
+                                            when {
+                                                isCurrent -> Color(0xFFA855F7)
+                                                isCompleted -> Emerald500
+                                                else -> Color.White.copy(alpha = 0.12f)
+                                            }
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            if (isCompleted) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = Emerald500,
+                                                    modifier = Modifier.size(11.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                            }
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isCurrent || isCompleted) Color.White else Color.LightGray,
+                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                fontSize = 10.5.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (mode == CameraCaptureMode.MULTI_PHOTO) {
                             Spacer(modifier = Modifier.height(10.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -654,8 +724,8 @@ fun InAppCameraCaptureDialog(
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // MULTI_PHOTO Filmstrip Reel of Snapped Photos
-                        if (mode == CameraCaptureMode.MULTI_PHOTO && capturedBitmaps.isNotEmpty()) {
+                        // Filmstrip Reel of Snapped Photos
+                        if ((mode == CameraCaptureMode.MULTI_PHOTO || mode == CameraCaptureMode.ENROLL_FRONT_BACK) && capturedBitmaps.isNotEmpty()) {
                             LazyRow(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -672,7 +742,7 @@ fun InAppCameraCaptureDialog(
                                         modifier = Modifier
                                             .size(70.dp)
                                             .clip(RoundedCornerShape(12.dp))
-                                            .border(1.5.dp, Emerald500, RoundedCornerShape(12.dp))
+                                            .border(1.5.dp, if (mode == CameraCaptureMode.ENROLL_FRONT_BACK) Color(0xFFA855F7) else Emerald500, RoundedCornerShape(12.dp))
                                     ) {
                                         Image(
                                             bitmap = bitmap.asImageBitmap(),
@@ -731,11 +801,16 @@ fun InAppCameraCaptureDialog(
                                 modifier = Modifier.weight(1f),
                                 contentAlignment = Alignment.CenterStart
                             ) {
-                                if (mode == CameraCaptureMode.MULTI_PHOTO) {
+                                if (mode == CameraCaptureMode.MULTI_PHOTO || mode == CameraCaptureMode.ENROLL_FRONT_BACK) {
+                                    val isFrontBack = mode == CameraCaptureMode.ENROLL_FRONT_BACK
                                     Surface(
-                                        color = if (capturedBitmaps.isNotEmpty()) Emerald500.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.1f),
+                                        color = if (capturedBitmaps.isNotEmpty()) {
+                                            if (isFrontBack) Color(0xFF7C3AED).copy(alpha = 0.25f) else Emerald500.copy(alpha = 0.2f)
+                                        } else Color.White.copy(alpha = 0.1f),
                                         shape = RoundedCornerShape(16.dp),
-                                        border = BorderStroke(1.dp, if (capturedBitmaps.isNotEmpty()) Emerald500.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.15f))
+                                        border = BorderStroke(1.dp, if (capturedBitmaps.isNotEmpty()) {
+                                            if (isFrontBack) Color(0xFFA855F7).copy(alpha = 0.6f) else Emerald500.copy(alpha = 0.5f)
+                                        } else Color.White.copy(alpha = 0.15f))
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -744,12 +819,14 @@ fun InAppCameraCaptureDialog(
                                             Icon(
                                                 imageVector = Icons.Default.PhotoCamera,
                                                 contentDescription = null,
-                                                tint = if (capturedBitmaps.isNotEmpty()) Emerald500 else Color.White,
+                                                tint = if (capturedBitmaps.isNotEmpty()) {
+                                                    if (isFrontBack) Color(0xFFA855F7) else Emerald500
+                                                } else Color.White,
                                                 modifier = Modifier.size(13.dp)
                                             )
                                             Spacer(modifier = Modifier.width(5.dp))
                                             Text(
-                                                text = "${capturedBitmaps.size} Snapped",
+                                                text = if (isFrontBack) "${capturedBitmaps.size}/2 Photos" else "${capturedBitmaps.size} Snapped",
                                                 color = Color.White,
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
@@ -769,7 +846,7 @@ fun InAppCameraCaptureDialog(
                                     .background(
                                         Brush.radialGradient(
                                             colors = listOf(
-                                                Emerald500.copy(alpha = 0.45f),
+                                                if (mode == CameraCaptureMode.ENROLL_FRONT_BACK) Color(0xFF7C3AED).copy(alpha = 0.45f) else Emerald500.copy(alpha = 0.45f),
                                                 Caramel400.copy(alpha = 0.20f),
                                                 Color.Transparent
                                             )
@@ -777,13 +854,13 @@ fun InAppCameraCaptureDialog(
                                     )
                                     .clickable(enabled = !isCapturing) { capturePhoto() }
                                     .padding(4.dp)
-                            ) {
+                                ) {
                                 Box(
                                     modifier = Modifier
                                         .size(62.dp)
                                         .clip(CircleShape)
                                         .background(Color.White)
-                                        .border(2.5.dp, Emerald500, CircleShape),
+                                        .border(2.5.dp, if (mode == CameraCaptureMode.ENROLL_FRONT_BACK) Color(0xFF7C3AED) else Emerald500, CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
@@ -800,24 +877,30 @@ fun InAppCameraCaptureDialog(
                                 modifier = Modifier.weight(1f),
                                 contentAlignment = Alignment.CenterEnd
                             ) {
-                                if (mode == CameraCaptureMode.MULTI_PHOTO && capturedBitmaps.isNotEmpty()) {
+                                val showDone = (mode == CameraCaptureMode.MULTI_PHOTO && capturedBitmaps.isNotEmpty()) ||
+                                        (mode == CameraCaptureMode.ENROLL_FRONT_BACK && capturedBitmaps.isNotEmpty())
+                                val isEnrollReady = mode == CameraCaptureMode.ENROLL_FRONT_BACK && capturedBitmaps.size >= 2
+
+                                if (showDone) {
                                     Button(
                                         onClick = {
                                             onPhotosCaptured(capturedBitmaps.toList())
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Emerald500),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isEnrollReady) Color(0xFF7C3AED) else Emerald500
+                                        ),
                                         shape = RoundedCornerShape(14.dp),
                                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Check,
+                                            imageVector = if (isEnrollReady) Icons.Default.AutoAwesome else Icons.Default.Check,
                                             contentDescription = null,
                                             tint = Color.White,
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "Done (${capturedBitmaps.size})",
+                                            text = if (isEnrollReady) "Autofill ✨" else "Done (${capturedBitmaps.size})",
                                             color = Color.White,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 12.sp
@@ -832,3 +915,4 @@ fun InAppCameraCaptureDialog(
         }
     }
 }
+

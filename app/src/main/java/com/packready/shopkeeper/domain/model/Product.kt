@@ -5,13 +5,20 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class ProductCategory(val displayName: String) {
     FOOD_GROCERY("Food & Grocery"),
+    SNACKS_PACKAGED("Snacks & Packaged Food"),
     BEVERAGES("Beverages"),
-    PERSONAL_CARE("Personal Care & Hygiene"),
-    HOUSEHOLD_CLEANING("Household & Cleaning"),
-    ELECTRONICS_ELECTRICAL("Electronics & Electrical"),
-    APPAREL_FOOTWEAR("Apparel & Footwear"),
+    DAIRY_REFRIGERATED("Dairy & Refrigerated"),
     LOOSE_STAPLES("Loose Staples"),
-    OTC_WELLNESS("OTC & Wellness"),
+    SPICES_MASALAS("Spices & Masalas"),
+    INSTANT_FOOD("Instant & Ready Food"),
+    PERSONAL_CARE("Personal Care & Hygiene"),
+    HOUSEHOLD_CLEANING("Cleaning & Household"),
+    OTC_WELLNESS("Pharmacy & Wellness"),
+    ELECTRONICS_ELECTRICAL("Electronics & Electrical"),
+    STATIONERY_OFFICE("Stationery & Office"),
+    BABY_CARE("Baby Care"),
+    PET_CARE("Pet Care"),
+    APPAREL_FOOTWEAR("Apparel & Footwear"),
     OTHER("Other")
 }
 
@@ -21,7 +28,10 @@ data class DynamicAttributes(
     val netWeight: String? = null,
     val isVegetarian: Boolean? = true,
     val bestBeforeMonths: Int? = null,
+    val expiryDate: String? = null,
+    val mfgDate: String? = null,
     val packagingType: String? = null, // Can, Bottle, Tetra, Pouch, Box
+
     
     // Electronics
     val wattage: String? = null,

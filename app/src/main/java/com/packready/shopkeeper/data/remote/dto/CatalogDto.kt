@@ -100,3 +100,23 @@ data class GeminiExtractRequestDto(
     @SerialName("api_key") val apiKey: String? = null
 )
 
+@Serializable
+data class ProductPhotoExtractionResponseDto(
+    val barcode: String,
+    @SerialName("is_barcode_generated") val isBarcodeGenerated: Boolean = false,
+    @SerialName("code_type") val codeType: String = "EAN_13",
+    val name: String,
+    val brand: String,
+    val category: String,
+    @SerialName("sub_category") val subCategory: String? = null,
+    @SerialName("standard_mrp") val standardMrp: Double = 0.0,
+    @SerialName("cost_price") val costPrice: Double = 0.0,
+    @SerialName("selling_price") val sellingPrice: Double = 0.0,
+    val unit: String = "pcs",
+    @SerialName("gst_percent") val gstPercent: Double = 0.0,
+    val description: String? = null,
+    @SerialName("dynamic_attributes") val dynamicAttributes: DynamicAttributes? = null,
+    @SerialName("image_urls") val imageUrls: List<String> = emptyList()
+)
+
+

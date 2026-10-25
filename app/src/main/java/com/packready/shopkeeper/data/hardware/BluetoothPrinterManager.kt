@@ -166,4 +166,72 @@ class BluetoothPrinterManager @Inject constructor() {
         sb.appendLine("================================")
         return sb.toString()
     }
+
+    @SuppressLint("MissingPermission")
+    suspend fun printStickerLabel(
+        deviceAddress: String? = null,
+        barcode: String,
+        productName: String,
+        mrp: Double,
+        storeName: String = "PACKREADY MART",
+        copies: Int = 1
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        var socket: BluetoothSocket? = null
+        try {
+            val adapter = BluetoothAdapter.getDefaultAdapter()
+                ?: return@withContext Result.failure(IllegalStateException("Bluetooth adapter unavailable"))
+
+            val targetAddress = deviceAddress ?: getPairedPrinters().firstOrNull()?.second
+                ?: return@withContext Result.failure(IllegalStateException("No paired Bluetooth printer found. Please pair printer in Bluetooth Settings."))
+
+            val device: BluetoothDevice = adapter.getRemoteDevice(targetAddress)
+            socket = device.createRfcommSocketToServiceRecord(SPP_UUID)
+            socket.connect()
+
+            val out: OutputStream = socket.outputStream
+
+            for (i in 0 until copies) {
+                // ESC/POS Init
+                out.write(byteArrayOf(0x1B, 0x40))
+                // Center Align
+                out.write(byteArrayOf(0x1B, 0x61, 0x01))
+                // Store Name Bold
+                out.write(byteArrayOf(0x1B, 0x45, 0x01))
+                out.write("$storeName\n".toByteArray(Charsets.US_ASCII))
+                out.write(byteArrayOf(0x1B, 0x45, 0x00))
+
+                // Product Name
+                val cleanName = productName.take(24)
+                out.write("$cleanName\n".toByteArray(Charsets.US_ASCII))
+
+                // MRP
+                out.write(byteArrayOf(0x1B, 0x45, 0x01))
+                out.write("MRP: Rs.${String.format(Locale.US, "%.2f", mrp)}\n".toByteArray(Charsets.US_ASCII))
+                out.write(byteArrayOf(0x1B, 0x45, 0x00))
+
+                // Barcode Configuration: GS h 60, GS w 2, GS H 2
+                out.write(byteArrayOf(0x1D, 0x68, 0x3C))
+                out.write(byteArrayOf(0x1D, 0x77, 0x02))
+                out.write(byteArrayOf(0x1D, 0x48, 0x02))
+
+                // Print Barcode CODE128
+                val cleanBarcode = barcode.filter { it.isLetterOrDigit() }
+                val codeBytes = cleanBarcode.toByteArray(Charsets.US_ASCII)
+                val len = codeBytes.size.toByte()
+                out.write(byteArrayOf(0x1D, 0x6B, 0x49, len))
+                out.write(codeBytes)
+
+                out.write("\n* $cleanBarcode *\n\n\n".toByteArray(Charsets.US_ASCII))
+                out.write(byteArrayOf(0x1D, 0x56, 0x41, 0x10))
+            }
+
+            out.flush()
+            socket.close()
+            Result.success(true)
+        } catch (e: Exception) {
+            try { socket?.close() } catch (_: Exception) {}
+            Result.failure(e)
+        }
+    }
 }
+
