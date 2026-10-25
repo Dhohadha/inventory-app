@@ -44,11 +44,11 @@ object NetworkModule {
         val failoverInterceptor = okhttp3.Interceptor { chain ->
             val request = chain.request()
             val url = request.url
-            if (url.host == "10.0.2.2" || url.host == "127.0.0.1" || url.host == "localhost" || url.host == "10.94.108.35") {
+            if (url.host == "13.239.252.110" || url.host == "10.0.2.2" || url.host == "127.0.0.1" || url.host == "localhost" || url.host == "10.94.108.35") {
                 val candidateHosts = if (isEmulator) {
-                    listOf("10.0.2.2", "127.0.0.1", "10.94.108.35")
+                    listOf("13.239.252.110", "10.0.2.2", "127.0.0.1")
                 } else {
-                    listOf("127.0.0.1", "10.94.108.35", "10.0.2.2")
+                    listOf("13.239.252.110", "127.0.0.1", "10.0.2.2")
                 }
                 var lastException: java.io.IOException? = null
                 for (host in candidateHosts) {
@@ -87,7 +87,7 @@ object NetworkModule {
             .create(GeminiVlmService::class.java)
     }
 
-    private const val PACKREADY_SERVER_BASE_URL = "http://10.0.2.2:8000/"
+    private const val PACKREADY_SERVER_BASE_URL = "http://13.239.252.110/"
 
     @Provides
     @Singleton

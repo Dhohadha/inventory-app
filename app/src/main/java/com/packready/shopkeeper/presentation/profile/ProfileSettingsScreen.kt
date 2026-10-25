@@ -522,7 +522,7 @@ fun ProfileSettingsScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "Active Server URL: http://10.0.2.2:8000/ (with automatic USB adb reverse & Wi-Fi failover)",
+                        text = "Active Server URL: http://13.239.252.110/ (AWS Production Cloud)",
                         style = MaterialTheme.typography.bodySmall,
                         color = BrownTextMuted,
                         fontSize = 11.5.sp
