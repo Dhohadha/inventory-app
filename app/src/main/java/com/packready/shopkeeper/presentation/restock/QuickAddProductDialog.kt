@@ -16,8 +16,13 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.graphics.Brush
+import com.packready.shopkeeper.presentation.ui.components.ProductThumbnailImage
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,7 +49,9 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VpnKey
 import android.graphics.Bitmap
 import androidx.compose.ui.text.style.TextAlign
@@ -234,7 +241,21 @@ fun QuickAddProductDialog(
         }
     }
 
-    var barcode by remember { mutableStateOf(initialBarcode ?: "890${(1000000000..9999999999).random()}") }
+    var barcode by remember { mutableStateOf(initialBarcode ?: "") }
+
+    fun generateInternalEan(): String {
+        val prefix = (20..29).random().toString()
+        val randomMiddle = (1000000000L..9999999999L).random().toString().take(10)
+        val raw12 = prefix + randomMiddle
+        var sumOdd = 0
+        var sumEven = 0
+        raw12.forEachIndexed { i, ch ->
+            val digit = ch - '0'
+            if (i % 2 == 0) sumOdd += digit else sumEven += digit
+        }
+        val checkDigit = (10 - ((sumOdd + sumEven * 3) % 10)) % 10
+        return "$raw12$checkDigit"
+    }
     var isExtractingDetails by remember { mutableStateOf(false) }
     var extractionStatusMessage by remember { mutableStateOf<String?>(null) }
     var extractionStatusIsError by remember { mutableStateOf(false) }
@@ -433,31 +454,40 @@ fun QuickAddProductDialog(
                                 color = BrownTextDark,
                                 fontSize = 17.sp
                             )
-                            Surface(
-                                color = Caramel100,
-                                shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.padding(top = 2.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                            if (barcode.isNotBlank()) {
+                                Surface(
+                                    color = Caramel100,
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.padding(top = 2.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.QrCode,
-                                        contentDescription = null,
-                                        tint = Caramel700,
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "EAN: $barcode",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = Caramel700,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 10.sp
-                                    )
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCode,
+                                            contentDescription = null,
+                                            tint = Caramel700,
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (isBarcodeGenerated) "Internal EAN: $barcode" else "Barcode: $barcode",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Caramel700,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 10.sp
+                                        )
+                                    }
                                 }
+                            } else {
+                                Text(
+                                    text = "AI Vision Auto-Fill or Manual Entry",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BrownTextMuted,
+                                    fontSize = 11.sp
+                                )
                             }
                         }
                     }
@@ -487,102 +517,420 @@ fun QuickAddProductDialog(
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // Card 1: Product Photos Studio Section
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, BrownBorder)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        // Smart 2-Photo AI Auto-Enroll Action Card
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .bouncingClickable { isTwoPhotoCameraOpen = true },
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFF5F3FF),
-                            border = BorderStroke(1.2.dp, Color(0xFFC084FC))
-                        ) {
+                    // Card 1: Packaging Studio & AI Auto-Enroll
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, BrownBorder)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            if (productImages.isEmpty()) {
+                                // Hero State: No photos yet -> Inviting 2-Photo Vision AI Banner
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .bouncingClickable { isTwoPhotoCameraOpen = true },
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color.Transparent
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(
+                                                brush = Brush.linearGradient(
+                                                    colors = listOf(
+                                                        Color(0xFF4C1D95),
+                                                        Color(0xFF6D28D9),
+                                                        Color(0xFF7C3AED)
+                                                    )
+                                                )
+                                            )
+                                            .padding(14.dp)
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            // Top Header Row
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.weight(1f, fill = false)
+                                                ) {
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = Color(0x33FFFFFF),
+                                                        modifier = Modifier.size(30.dp)
+                                                    ) {
+                                                        Box(contentAlignment = Alignment.Center) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.AutoAwesome,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFFFDE047),
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Column {
+                                                        Text(
+                                                            text = "Smart 2-Photo AI Auto-Enroll",
+                                                            style = MaterialTheme.typography.titleSmall,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White,
+                                                            fontSize = 14.sp
+                                                        )
+                                                        Text(
+                                                            text = "Multimodal Vision & ML Kit",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = Color(0xFFDDD6FE),
+                                                            fontSize = 10.sp
+                                                        )
+                                                    }
+                                                }
+
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = Color(0x35FFFFFF)
+                                                ) {
+                                                    Text(
+                                                        text = "GEMINI AI",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                                        fontWeight = FontWeight.Black,
+                                                        color = Color.White,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(10.dp))
+
+                                            // 2 Step Guided Slots
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                // Step 1: Front
+                                                Surface(
+                                                    modifier = Modifier.weight(1f),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = Color(0x22FFFFFF),
+                                                    border = BorderStroke(1.dp, Color(0x44FFFFFF))
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.CameraAlt,
+                                                            contentDescription = null,
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = "1. Front View",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color.White,
+                                                                fontSize = 11.sp
+                                                            )
+                                                            Text(
+                                                                text = "Title & Brand",
+                                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
+                                                                color = Color(0xFFDDD6FE)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                // Step 2: Back
+                                                Surface(
+                                                    modifier = Modifier.weight(1f),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = Color(0x22FFFFFF),
+                                                    border = BorderStroke(1.dp, Color(0x44FFFFFF))
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.QrCode,
+                                                            contentDescription = null,
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = "2. Back View",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color.White,
+                                                                fontSize = 11.sp
+                                                            )
+                                                            Text(
+                                                                text = "Barcode & Expiry",
+                                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
+                                                                color = Color(0xFFDDD6FE)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(12.dp))
+
+                                            // Action Buttons Row
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Button(
+                                                    onClick = { isTwoPhotoCameraOpen = true },
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(38.dp),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CameraAlt,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF6D28D9),
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = "Snap Packaging ⚡",
+                                                        color = Color(0xFF6D28D9),
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
+
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .height(38.dp)
+                                                        .clip(RoundedCornerShape(10.dp))
+                                                    .bouncingClickable { galleryLauncher.launch("image/*") },
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = Color(0x33FFFFFF),
+                                                border = BorderStroke(1.dp, Color(0x66FFFFFF))
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.PhotoLibrary,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "Gallery",
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 11.5.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Photos captured state: Sleek gallery strip with labeled thumbnails
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = Color(0xFF7C3AED),
-                                    modifier = Modifier.size(38.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.AutoAwesome,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(20.dp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.CameraAlt,
+                                        contentDescription = null,
+                                        tint = Caramel600,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Packaging Photos",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrownTextDark
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = ForestGreen100
+                                    ) {
+                                        Text(
+                                            text = "${productImages.size} captured",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ForestGreen600,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = "Smart 2-Photo AI Auto-Enroll",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF5B21B6)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFF3E8FF),
+                                        border = BorderStroke(1.dp, Color(0xFFC084FC)),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .bouncingClickable { isTwoPhotoCameraOpen = true }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Refresh,
+                                                contentDescription = null,
+                                                tint = Color(0xFF7C3AED),
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Retake AI",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF7C3AED),
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Cream200,
+                                        border = BorderStroke(1.dp, BrownBorder),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .bouncingClickable { galleryLauncher.launch("image/*") }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = null,
+                                                tint = BrownTextDark,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Text(
+                                                text = "Add",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = BrownTextDark,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Horizontal thumbnail row
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                itemsIndexed(productImages) { idx, path ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(76.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .border(1.2.dp, if (idx == 0) Color(0xFF7C3AED) else BrownBorder, RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                editingImagePath = path
+                                                editingImageIndex = idx
+                                            }
+                                    ) {
+                                        ProductThumbnailImage(
+                                            imagePath = path,
+                                            modifier = Modifier.fillMaxSize(),
+                                            reqSize = 160
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Cream200),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "${idx + 1}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = BrownTextMedium
+                                                )
+                                            }
+                                        }
+
+                                        // Badge: 1. FRONT or 2. BACK
                                         Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = Color(0xFF7C3AED)
+                                            shape = RoundedCornerShape(bottomEnd = 6.dp),
+                                            color = when (idx) {
+                                                0 -> Color(0xFF7C3AED)
+                                                1 -> Color(0xFF2563EB)
+                                                else -> Caramel700
+                                            },
+                                            modifier = Modifier.align(Alignment.TopStart)
                                         ) {
                                             Text(
-                                                text = "VISION AI",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                                text = when (idx) {
+                                                    0 -> "FRONT"
+                                                    1 -> "BACK"
+                                                    else -> "#${idx + 1}"
+                                                },
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color.White,
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                             )
                                         }
+
+                                        // Delete button
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color.Black.copy(alpha = 0.6f),
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(2.dp)
+                                                .size(18.dp)
+                                                .clickable {
+                                                    if (idx in productImages.indices) {
+                                                        productImages.removeAt(idx)
+                                                    }
+                                                }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Delete",
+                                                tint = Color.White,
+                                                modifier = Modifier.padding(3.dp)
+                                            )
+                                        }
                                     }
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        text = "Snap Front & Back photos — extracts barcode, name, MRP & expiry instantly!",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = Color(0xFF6B7280)
-                                    )
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = Icons.Default.CameraAlt,
-                                    contentDescription = "Capture Front & Back",
-                                    tint = Color(0xFF7C3AED),
-                                    modifier = Modifier.size(22.dp)
-                                )
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Multi-Image Editor Component with automatic Cloudinary upload & status
-                        MultiImageEditorRow(
-                            images = productImages,
-                            uploadingImages = uploadingImages.toSet(),
-                            onAddViaCamera = { isCameraCaptureOpen = true },
-                            onAddViaGallery = { galleryLauncher.launch("image/*") },
-                            onEditImage = { index, path ->
-                                editingImagePath = path
-                                editingImageIndex = index
-                            },
-                            onRemoveImage = { index ->
-                                if (index in productImages.indices) {
-                                    productImages.removeAt(index)
-                                }
-                            }
-                        )
                     }
                 }
 
@@ -596,58 +944,53 @@ fun QuickAddProductDialog(
                     border = BorderStroke(1.dp, BrownBorder)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "Item Identity & Details",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Caramel700
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        if (isBarcodeGenerated) {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 8.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFFFEF3C7),
-                                border = BorderStroke(1.dp, Color(0xFFF59E0B))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Item Identity & Barcode",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Caramel700
+                            )
+                            if (isBarcodeGenerated) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFFEF3C7),
+                                    border = BorderStroke(1.dp, Color(0xFFF59E0B))
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Bolt,
-                                        contentDescription = null,
-                                        tint = Color(0xFFB45309),
-                                        modifier = Modifier.size(18.dp)
+                                    Text(
+                                        text = "⚡ System EAN",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF92400E),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = "⚡ System-Generated Internal EAN Barcode",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF92400E)
-                                        )
-                                        Text(
-                                            text = "No barcode found on packaging. Ready to print sticker label below!",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-                                            color = Color(0xFFB45309)
-                                        )
-                                    }
                                 }
                             }
                         }
 
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         OutlinedTextField(
                             value = barcode,
-                            onValueChange = { barcode = it },
-                            label = { Text("Barcode / EAN") },
+                            onValueChange = {
+                                barcode = it
+                                if (isBarcodeGenerated) isBarcodeGenerated = false
+                            },
+                            label = { Text("Barcode / EAN / QR") },
+                            placeholder = { Text("Scan packaging or auto-generate", color = BrownTextMuted) },
                             leadingIcon = {
                                 Icon(imageVector = Icons.Default.QrCode, contentDescription = null, tint = Caramel600, modifier = Modifier.size(18.dp))
+                            },
+                            trailingIcon = {
+                                if (barcode.isNotBlank()) {
+                                    IconButton(onClick = { barcode = "" }, modifier = Modifier.size(24.dp)) {
+                                        Icon(imageVector = Icons.Default.Close, contentDescription = "Clear", tint = BrownTextMuted, modifier = Modifier.size(16.dp))
+                                    }
+                                }
                             },
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -660,147 +1003,150 @@ fun QuickAddProductDialog(
                             singleLine = true
                         )
 
-                        if (barcode.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Caramel100,
-                                    border = BorderStroke(1.dp, Caramel500.copy(alpha = 0.5f)),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .bouncingClickable { showPrintDialog = true }
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Print,
-                                            contentDescription = null,
-                                            tint = Caramel700,
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Print Barcode Sticker 🏷️",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Caramel700,
-                                            fontSize = 11.5.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Button to Extract / Autofill Details from Server
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .bouncingClickable {
-                                    if (!isExtractingDetails && barcode.isNotBlank() && catalogApiService != null) {
-                                        isExtractingDetails = true
-                                        extractionStatusMessage = null
-                                        showGeminiOption = false
-                                        coroutineScope.launch {
-                                            try {
-                                                // 1. Check Master Catalog ONLY (autoAiFallback = false)
-                                                val response = catalogApiService.getProductByBarcode(barcode.trim(), autoAiFallback = false)
-                                                if (response.isSuccessful && response.body() != null) {
-                                                    val prod = response.body()!!
-                                                    name = prod.name
-                                                    brand = prod.brand
-                                                    selectedCategory = matchCategory(prod.category)
-                                                    unit = prod.unit
-                                                    if (prod.standardMrp > 0) {
-                                                        mrp = prod.standardMrp.toString()
-                                                        sellingPrice = prod.standardMrp.toString()
-                                                        costPrice = (prod.standardMrp * 0.85).toString()
-                                                    }
-                                                    prod.dynamicAttributes?.let { da ->
-                                                        da.netWeight?.let { netWeight = it }
-                                                        da.isVegetarian?.let { isVegetarian = it }
-                                                        da.wattage?.let { wattage = it }
-                                                        da.warrantyMonths?.let { warrantyMonths = it.toString() }
-                                                        da.fragrance?.let { fragrance = it }
-                                                        da.size?.let { size = it }
-                                                        da.grainGrade?.let { grainGrade = it }
-                                                    }
-                                                    prod.images.forEach { imgDto ->
-                                                        val remoteUrl = imgDto.secureUrl
-                                                        if (!productImages.contains(remoteUrl)) {
-                                                            productImages.add(remoteUrl)
-                                                            coroutineScope.launch {
-                                                                ProductImageStorage.saveRemoteUrlLowSpace(context, remoteUrl, barcode)
+                        // Quick Action Bar beneath Barcode
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (barcode.isNotBlank()) {
+                                // Print Sticker Button
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .bouncingClickable { showPrintDialog = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Caramel100,
+                                    border = BorderStroke(1.dp, Caramel400)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 9.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Print, contentDescription = null, tint = Caramel700, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text("Print Sticker 🏷️", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Caramel700)
+                                    }
+                                }
+
+                                // Verify / Extract from Master Catalog
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1.2f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .bouncingClickable {
+                                            if (!isExtractingDetails && barcode.isNotBlank() && catalogApiService != null) {
+                                                isExtractingDetails = true
+                                                extractionStatusMessage = null
+                                                showGeminiOption = false
+                                                coroutineScope.launch {
+                                                    try {
+                                                        val response = catalogApiService.getProductByBarcode(barcode.trim(), autoAiFallback = false)
+                                                        if (response.isSuccessful && response.body() != null) {
+                                                            val prod = response.body()!!
+                                                            name = prod.name
+                                                            brand = prod.brand
+                                                            selectedCategory = matchCategory(prod.category)
+                                                            unit = prod.unit
+                                                            if (prod.standardMrp > 0) {
+                                                                mrp = prod.standardMrp.toString()
+                                                                sellingPrice = prod.standardMrp.toString()
+                                                                costPrice = (prod.standardMrp * 0.85).toString()
                                                             }
+                                                            prod.dynamicAttributes?.let { da ->
+                                                                da.netWeight?.let { netWeight = it }
+                                                                da.isVegetarian?.let { isVegetarian = it }
+                                                                da.expiryDate?.let { expiryDate = it }
+                                                                da.mfgDate?.let { mfgDate = it }
+                                                                da.wattage?.let { wattage = it }
+                                                                da.warrantyMonths?.let { warrantyMonths = it.toString() }
+                                                                da.fragrance?.let { fragrance = it }
+                                                                da.size?.let { size = it }
+                                                                da.grainGrade?.let { grainGrade = it }
+                                                            }
+                                                            prod.images.forEach { imgDto ->
+                                                                val remoteUrl = imgDto.secureUrl
+                                                                if (!productImages.contains(remoteUrl)) {
+                                                                    productImages.add(remoteUrl)
+                                                                    coroutineScope.launch {
+                                                                        ProductImageStorage.saveRemoteUrlLowSpace(context, remoteUrl, barcode)
+                                                                    }
+                                                                }
+                                                            }
+                                                            extractionStatusMessage = "✓ Verified in Master Catalog: ${prod.name}"
+                                                            extractionStatusIsError = false
+                                                            showGeminiOption = false
+                                                        } else {
+                                                            usageStats = geminiTracker?.getUsageStats()
+                                                            extractionStatusMessage = "Product not in Master Catalog. You can extract with Gemini AI below."
+                                                            extractionStatusIsError = true
+                                                            showGeminiOption = true
                                                         }
+                                                    } catch (e: Exception) {
+                                                        usageStats = geminiTracker?.getUsageStats()
+                                                        extractionStatusMessage = "Product not found. You can extract with Gemini AI below."
+                                                        extractionStatusIsError = true
+                                                        showGeminiOption = true
+                                                    } finally {
+                                                        isExtractingDetails = false
                                                     }
-                                                    extractionStatusMessage = "✓ Verified in Master Catalog: ${prod.name}"
-                                                    extractionStatusIsError = false
-                                                    showGeminiOption = false
-                                                } else {
-                                                    // Product not found in Master Catalog: reveal Gemini AI option with live rate-limit tracking
-                                                    usageStats = geminiTracker?.getUsageStats()
-                                                    extractionStatusMessage = "Product not found in Master Catalog or Open Food Facts. You can extract with Gemini AI below."
-                                                    extractionStatusIsError = true
-                                                    showGeminiOption = true
                                                 }
-                                            } catch (e: Exception) {
-                                                usageStats = geminiTracker?.getUsageStats()
-                                                extractionStatusMessage = "Product not found in Master Catalog or Open Food Facts. You can extract with Gemini AI below."
-                                                extractionStatusIsError = true
-                                                showGeminiOption = true
-                                            } finally {
-                                                isExtractingDetails = false
                                             }
+                                        },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Cream100,
+                                    border = BorderStroke(1.dp, BrownBorder)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 9.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (isExtractingDetails) {
+                                            CircularProgressIndicator(modifier = Modifier.size(13.dp), color = Caramel700, strokeWidth = 2.dp)
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text("Checking...", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Caramel700)
+                                        } else {
+                                            Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = Caramel700, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text("Search Catalog 🔍", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Caramel700)
                                         }
                                     }
-                                },
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (barcode.isNotBlank()) Caramel50 else Cream100,
-                            border = BorderStroke(1.dp, if (barcode.isNotBlank()) Caramel500.copy(alpha = 0.7f) else BrownBorder)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 10.dp, horizontal = 14.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                if (isExtractingDetails) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        color = Caramel600,
-                                        strokeWidth = 2.dp
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Extracting Details from Server...",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Caramel700
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Default.Bolt,
-                                        contentDescription = null,
-                                        tint = if (barcode.isNotBlank()) Caramel600 else BrownTextMuted,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Extract Details from Server",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (barcode.isNotBlank()) Caramel700 else BrownTextMuted
-                                    )
+                                }
+                            } else {
+                                // When barcode is blank: Option to auto-generate internal EAN-13
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .bouncingClickable {
+                                            val newEan = generateInternalEan()
+                                            barcode = newEan
+                                            isBarcodeGenerated = true
+                                            extractionStatusMessage = "⚡ Generated internal EAN barcode: $newEan"
+                                            extractionStatusIsError = false
+                                        },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Caramel50,
+                                    border = BorderStroke(1.dp, Caramel400.copy(alpha = 0.6f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(vertical = 9.dp, horizontal = 12.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Bolt, contentDescription = null, tint = Caramel700, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Auto-Generate Internal EAN-13 Barcode ⚡",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Caramel700
+                                        )
+                                    }
                                 }
                             }
                         }
