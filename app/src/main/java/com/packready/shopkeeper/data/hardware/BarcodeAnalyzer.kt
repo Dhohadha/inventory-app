@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Ensures continuous, hands-free desk scanning without duplicated reads.
  */
 class BarcodeAnalyzer(
-    private val debounceWindowMs: Long = 1400L,
+    private val debounceWindowMs: Long = 2000L,
     private val onBarcodeDetected: (String) -> Unit
 ) : ImageAnalysis.Analyzer {
 

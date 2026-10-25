@@ -55,7 +55,9 @@ class SaleRepositoryImpl @Inject constructor(
         // 2. Decrement Stock and Increment Popularity count for each product
         for (item in sale.items) {
             productDao.adjustStock(item.productId, -item.quantity)
-            productDao.incrementSalesCount(item.productId, item.quantity.toInt().coerceAtLeast(1))
+            if (sale.paymentMethod != PaymentMethod.ADJUSTMENT) {
+                productDao.incrementSalesCount(item.productId, item.quantity.toInt().coerceAtLeast(1))
+            }
         }
 
         // 3. Queue to Sync Outbox for cloud synchronization
@@ -84,7 +86,9 @@ class SaleRepositoryImpl @Inject constructor(
         val transactions = saleDao.getTransactionsBetweenSync(dayStartTimestamp, dayEndTimestamp)
         val items = saleDao.getItemsBetweenDates(dayStartTimestamp, dayEndTimestamp)
 
-        val totalRev = transactions.sumOf { it.grandTotal }
+        // Only actual sales count towards business revenue (Adjustments are non-cash inventory write-offs)
+        val salesTransactions = transactions.filter { it.paymentMethod != PaymentMethod.ADJUSTMENT.name }
+        val totalRev = salesTransactions.sumOf { it.grandTotal }
         val totalCost = items.sumOf { it.costPrice * it.quantity }
         val grossProfit = (totalRev - totalCost).coerceAtLeast(0.0)
         val margin = if (totalRev > 0) (grossProfit / totalRev) * 100.0 else 0.0
@@ -93,6 +97,7 @@ class SaleRepositoryImpl @Inject constructor(
         var upiSum = 0.0
         var khataSum = 0.0
         var cardSum = 0.0
+        var adjustmentSum = 0.0
 
         for (tx in transactions) {
             when (tx.paymentMethod) {
@@ -100,6 +105,7 @@ class SaleRepositoryImpl @Inject constructor(
                 PaymentMethod.UPI.name -> upiSum += tx.grandTotal
                 PaymentMethod.KHATA.name -> khataSum += tx.grandTotal
                 PaymentMethod.CARD.name -> cardSum += tx.grandTotal
+                PaymentMethod.ADJUSTMENT.name -> adjustmentSum += tx.grandTotal
             }
         }
 
@@ -124,7 +130,8 @@ class SaleRepositoryImpl @Inject constructor(
                 cashTotal = cashSum,
                 upiTotal = upiSum,
                 khataTotal = khataSum,
-                cardTotal = cardSum
+                cardTotal = cardSum,
+                adjustmentTotal = adjustmentSum
             ),
             topSellingProducts = productSalesGrouped
         )

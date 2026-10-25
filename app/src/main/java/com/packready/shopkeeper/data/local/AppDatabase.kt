@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
         InvoiceLineItemEntity::class,
         ProductEmbeddingEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -65,20 +65,6 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                .fallbackToDestructiveMigration()
-                .addCallback(object : Callback() {
-                    override fun onCreate(db: SupportSQLiteDatabase) {
-                        super.onCreate(db)
-                        // Pre-populate with Indian Kirana Store Catalog
-                        scope.launch(Dispatchers.IO) {
-                            val database = INSTANCE ?: return@launch
-                            val entities = InitialCatalogData.sampleProducts.map {
-                                ProductEntity.fromDomain(it)
-                            }
-                            database.productDao().insertAll(entities)
-                        }
-                    }
-                })
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

@@ -64,6 +64,20 @@ import com.packready.shopkeeper.domain.model.Product
 import com.packready.shopkeeper.presentation.theme.Amber500
 import com.packready.shopkeeper.presentation.theme.Roast800
 import com.packready.shopkeeper.presentation.theme.Roast900
+import com.packready.shopkeeper.presentation.theme.BrownBorder
+import com.packready.shopkeeper.presentation.theme.BrownTextDark
+import com.packready.shopkeeper.presentation.theme.BrownTextMedium
+import com.packready.shopkeeper.presentation.theme.BrownTextMuted
+import com.packready.shopkeeper.presentation.theme.Caramel100
+import com.packready.shopkeeper.presentation.theme.Caramel400
+import com.packready.shopkeeper.presentation.theme.Caramel50
+import com.packready.shopkeeper.presentation.theme.Caramel600
+import com.packready.shopkeeper.presentation.theme.Caramel700
+import com.packready.shopkeeper.presentation.theme.Cream100
+import com.packready.shopkeeper.presentation.theme.Cream200
+import com.packready.shopkeeper.presentation.theme.Cream50
+import com.packready.shopkeeper.presentation.theme.Espresso800
+import com.packready.shopkeeper.presentation.theme.ForestGreen600
 import com.packready.shopkeeper.presentation.ui.components.BarcodeRenderer
 import com.packready.shopkeeper.presentation.ui.components.PackReadyEmblem
 import com.packready.shopkeeper.presentation.ui.components.bouncingClickable
@@ -94,24 +108,18 @@ fun LabelGeneratorScreen(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        PackReadyEmblem(size = 30.dp)
+                        PackReadyEmblem(size = 28.dp)
                         Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "Bulk Staples & Container Barcodes",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Generate Thermal Jar Stickers for Unbranded Loose Goods",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
+                        Text(
+                            text = "Container Stickers",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = BrownTextDark
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = Cream50
                 )
             )
         }
@@ -120,41 +128,39 @@ fun LabelGeneratorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .background(Cream50)
+                .padding(horizontal = 14.dp, vertical = 6.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             // New Loose Goods Form
             Card(
                 shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, BrownBorder),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Digitize Unbranded Loose Staples",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = "New Container Sticker",
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "Assigns unique PK-LOOSE-XXXX barcode for container jars and bulk sacks",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = BrownTextDark
                     )
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     OutlinedTextField(
                         value = uiState.itemNameInput,
                         onValueChange = { viewModel.onEvent(LooseGoodsUiEvent.OnNameChange(it)) },
-                        label = { Text("Item Name (e.g. Loose Sugar, Basmati Rice)") },
+                        label = { Text("Item Name") },
+                        placeholder = { Text("Loose Sugar, Basmati Rice") },
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedBorderColor = Caramel600,
+                            unfocusedBorderColor = BrownBorder
                         ),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -169,13 +175,15 @@ fun LabelGeneratorScreen(
                         OutlinedTextField(
                             value = uiState.sellingPriceInput,
                             onValueChange = { viewModel.onEvent(LooseGoodsUiEvent.OnSellingPriceChange(it)) },
-                            label = { Text("Rate (₹)", maxLines = 1) },
-                            placeholder = { Text("0.00") },
+                            label = { Text("Rate (₹)") },
+                            placeholder = { Text("0") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = Caramel600,
+                                unfocusedBorderColor = BrownBorder
                             ),
                             modifier = Modifier.weight(1.05f),
                             singleLine = true
@@ -183,13 +191,15 @@ fun LabelGeneratorScreen(
                         OutlinedTextField(
                             value = uiState.costPriceInput,
                             onValueChange = { viewModel.onEvent(LooseGoodsUiEvent.OnCostChange(it)) },
-                            label = { Text("Cost (₹)", maxLines = 1) },
-                            placeholder = { Text("0.00") },
+                            label = { Text("Cost (₹)") },
+                            placeholder = { Text("0") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = Caramel600,
+                                unfocusedBorderColor = BrownBorder
                             ),
                             modifier = Modifier.weight(0.95f),
                             singleLine = true
@@ -197,12 +207,14 @@ fun LabelGeneratorScreen(
                         OutlinedTextField(
                             value = uiState.unitInput,
                             onValueChange = { viewModel.onEvent(LooseGoodsUiEvent.OnUnitChange(it)) },
-                            label = { Text("Unit", maxLines = 1) },
+                            label = { Text("Unit") },
                             placeholder = { Text("kg") },
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = Caramel600,
+                                unfocusedBorderColor = BrownBorder
                             ),
                             modifier = Modifier.weight(0.85f),
                             singleLine = true
@@ -217,17 +229,12 @@ fun LabelGeneratorScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Unit:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         listOf("kg", "g", "L", "ml", "pack", "pcs").forEach { unitOpt ->
                             val isSelected = uiState.unitInput.equals(unitOpt, ignoreCase = true)
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                border = if (isSelected) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                color = if (isSelected) Caramel600 else Cream100,
+                                border = if (isSelected) null else BorderStroke(1.dp, BrownBorder),
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { viewModel.onEvent(LooseGoodsUiEvent.OnUnitChange(unitOpt)) }
@@ -236,8 +243,8 @@ fun LabelGeneratorScreen(
                                     text = unitOpt,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    color = if (isSelected) Color.White else BrownTextDark,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
                                 )
                             }
                         }
@@ -247,7 +254,7 @@ fun LabelGeneratorScreen(
 
                     Button(
                         onClick = { viewModel.onEvent(LooseGoodsUiEvent.GenerateCustomBarcode) },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        colors = ButtonDefaults.buttonColors(containerColor = Espresso800),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -256,7 +263,7 @@ fun LabelGeneratorScreen(
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = Color.White)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Generate Container Barcode", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Generate Barcode", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -271,48 +278,148 @@ fun LabelGeneratorScreen(
                     onCopiesSelect = { viewModel.onEvent(LooseGoodsUiEvent.SetCopiesCount(it)) },
                     onPrint = { viewModel.onEvent(LooseGoodsUiEvent.PrintStickerLabels) }
                 )
+                Spacer(modifier = Modifier.height(14.dp))
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
             // Existing Loose Items List
-            Text(
-                text = "Registered Bulk Container Stickers",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Registered Bulk Container Stickers",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = BrownTextDark
+                )
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = Caramel100,
+                    modifier = Modifier.padding(vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "${uiState.looseProducts.size} items",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Caramel700,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
-            uiState.looseProducts.forEach { product ->
-                Card(
+            if (uiState.looseProducts.isEmpty()) {
+                Surface(
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, BrownBorder),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp)
-                        .bouncingClickable(scaleDownFactor = 0.98f) { viewModel.onEvent(LooseGoodsUiEvent.SelectProductForLabel(product)) }
                 ) {
-                    Row(
+                    Text(
+                        text = "No container stickers generated yet",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = BrownTextMuted,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            } else {
+                uiState.looseProducts.forEach { product ->
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, BrownBorder),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(vertical = 4.dp)
+                            .bouncingClickable(scaleDownFactor = 0.98f) { viewModel.onEvent(LooseGoodsUiEvent.SelectProductForLabel(product)) }
                     ) {
-                        Column {
-                            Text(text = product.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                            Text(text = "ID: ${product.barcode} • Rate: ₹${String.format(Locale.US, "%.0f", product.sellingPrice)}/${product.unit}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.onEvent(LooseGoodsUiEvent.SelectProductForLabel(product)) },
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.bouncingClickable { viewModel.onEvent(LooseGoodsUiEvent.SelectProductForLabel(product)) }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Preview Sticker", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Caramel50,
+                                    border = BorderStroke(1.dp, Caramel400.copy(alpha = 0.4f)),
+                                    modifier = Modifier.size(42.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCode2,
+                                            contentDescription = null,
+                                            tint = Caramel700,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column {
+                                    Text(
+                                        text = product.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrownTextDark
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Cream200
+                                        ) {
+                                            Text(
+                                                text = product.barcode,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 10.sp,
+                                                color = Caramel700,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = "₹${String.format(Locale.US, "%.0f", product.sellingPrice)}/${product.unit}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = ForestGreen600,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { viewModel.onEvent(LooseGoodsUiEvent.SelectProductForLabel(product)) },
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Caramel600),
+                                modifier = Modifier
+                                    .padding(start = 8.dp)
+                                    .bouncingClickable { viewModel.onEvent(LooseGoodsUiEvent.SelectProductForLabel(product)) }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Print,
+                                    contentDescription = null,
+                                    tint = Caramel700,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Sticker", color = Caramel700, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
                         }
                     }
                 }
@@ -330,8 +437,8 @@ private fun StickerPreviewCard(
 ) {
     Card(
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+        colors = CardDefaults.cardColors(containerColor = Cream100),
+        border = BorderStroke(1.dp, BrownBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -340,33 +447,33 @@ private fun StickerPreviewCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Container Sticker Preview",
+                text = "Sticker Preview",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = BrownTextDark
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Visual Sticker Mockup
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = Color.White,
-                shadowElevation = 6.dp,
-                border = BorderStroke(1.dp, Color(0xFFDCD4C8)),
+                shadowElevation = 4.dp,
+                border = BorderStroke(1.dp, BrownBorder),
                 modifier = Modifier
-                    .fillMaxWidth(0.90f)
+                    .fillMaxWidth(0.92f)
                     .padding(vertical = 4.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "PACKREADY MART",
+                        text = "PACKREADY",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                        color = BrownTextDark
                     )
                     Text(
                         text = product.name,
@@ -376,24 +483,19 @@ private fun StickerPreviewCard(
                     )
                     Text(
                         text = "₹${String.format(Locale.US, "%.0f", product.sellingPrice)} per ${product.unit}",
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.Black,
-                        modifier = Modifier.padding(vertical = 4.dp)
+                        modifier = Modifier.padding(vertical = 3.dp)
                     )
                     BarcodeRenderer(
                         barcodeData = product.barcode,
                         modifier = Modifier.padding(vertical = 4.dp)
                     )
-                    Text(
-                        text = "Scan at POS Checkout Counter",
-                        fontSize = 9.5.sp,
-                        color = Color.DarkGray
-                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Copies Selector
             Row(
@@ -402,38 +504,39 @@ private fun StickerPreviewCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Label Copies:",
+                    text = "Copies:",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = BrownTextDark
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(2, 4, 6, 12, 24).forEach { count ->
+                        val isSelected = copiesCount == count
                         Surface(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .bouncingClickable { onCopiesSelect(count) },
                             shape = RoundedCornerShape(8.dp),
-                            color = if (copiesCount == count) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(1.dp, if (copiesCount == count) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            color = if (isSelected) Caramel600 else Color.White,
+                            border = BorderStroke(1.dp, if (isSelected) Caramel600 else BrownBorder)
                         ) {
                             Text(
                                 text = "$count",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (copiesCount == count) Color.White else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                color = if (isSelected) Color.White else BrownTextDark,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Button(
                 onClick = onPrint,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                colors = ButtonDefaults.buttonColors(containerColor = Espresso800),
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -443,7 +546,7 @@ private fun StickerPreviewCard(
                 Icon(imageVector = Icons.Default.Print, contentDescription = null, tint = Color.White)
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "Print $copiesCount Stickers on ESC/POS Thermal Sheet",
+                    text = "Print Stickers ($copiesCount)",
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )

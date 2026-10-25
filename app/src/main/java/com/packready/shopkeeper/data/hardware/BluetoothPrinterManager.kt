@@ -92,7 +92,7 @@ class BluetoothPrinterManager @Inject constructor() {
                 out.write("Discount:              -Rs.${String.format(Locale.US, "%.2f", sale.discountAmount)}\n".toByteArray(Charsets.US_ASCII))
             }
             if (sale.taxAmount > 0) {
-                out.write("GST Tax:               +Rs.${String.format(Locale.US, "%.2f", sale.taxAmount)}\n".toByteArray(Charsets.US_ASCII))
+                out.write("(Incl. GST Tax:         Rs.${String.format(Locale.US, "%.2f", sale.taxAmount)})\n".toByteArray(Charsets.US_ASCII))
             }
 
             out.write(byteArrayOf(0x1B, 0x45, 0x01)) // Bold ON
@@ -154,7 +154,7 @@ class BluetoothPrinterManager @Inject constructor() {
             sb.appendLine("Discount:              -₹${String.format(Locale.US, "%.2f", sale.discountAmount)}")
         }
         if (sale.taxAmount > 0) {
-            sb.appendLine("GST Tax:               +₹${String.format(Locale.US, "%.2f", sale.taxAmount)}")
+            sb.appendLine("(Incl. GST Tax:         ₹${String.format(Locale.US, "%.2f", sale.taxAmount)})")
         }
         sb.appendLine("GRAND TOTAL:            ₹${String.format(Locale.US, "%.2f", sale.grandTotal)}")
         sb.appendLine("Payment: ${sale.paymentMethod.label}")

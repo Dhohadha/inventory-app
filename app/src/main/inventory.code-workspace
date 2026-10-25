@@ -5,6 +5,12 @@
 		},
 		{
 			"path": "../../../../packready/inventory_native"
+		},
+		{
+			"path": "../../../../packready/SERVER_packReady"
+		},
+		{
+			"path": "../../../../packready/packready_admin"
 		}
 	],
 	"settings": {}

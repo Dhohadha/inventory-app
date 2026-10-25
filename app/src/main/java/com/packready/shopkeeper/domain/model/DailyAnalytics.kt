@@ -7,7 +7,8 @@ data class PaymentBreakdown(
     val cashTotal: Double = 0.0,
     val upiTotal: Double = 0.0,
     val khataTotal: Double = 0.0,
-    val cardTotal: Double = 0.0
+    val cardTotal: Double = 0.0,
+    val adjustmentTotal: Double = 0.0
 )
 
 @Serializable

@@ -11,18 +11,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.LocalAtm
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material3.Button
@@ -47,32 +47,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import android.graphics.Bitmap
-import androidx.compose.foundation.Image
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.PhotoCamera
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import com.packready.shopkeeper.domain.model.Cart
 import com.packready.shopkeeper.domain.model.PaymentMethod
-import androidx.compose.ui.unit.sp
-import com.packready.shopkeeper.presentation.theme.Amber500
+import com.packready.shopkeeper.presentation.theme.BrownTextDark
+import com.packready.shopkeeper.presentation.theme.BrownTextMuted
+import com.packready.shopkeeper.presentation.theme.Caramel100
 import com.packready.shopkeeper.presentation.theme.Caramel400
-import com.packready.shopkeeper.presentation.theme.Caramel500
 import com.packready.shopkeeper.presentation.theme.Caramel600
-import com.packready.shopkeeper.presentation.theme.Emerald500
+import com.packready.shopkeeper.presentation.theme.Caramel700
+import com.packready.shopkeeper.presentation.theme.Cream100
 import com.packready.shopkeeper.presentation.theme.Espresso800
+import com.packready.shopkeeper.presentation.theme.ForestGreen600
 import com.packready.shopkeeper.presentation.theme.PackReadyShopkeeperTheme
-import com.packready.shopkeeper.presentation.theme.Roast800
-import com.packready.shopkeeper.presentation.theme.Roast900
-import com.packready.shopkeeper.presentation.ui.components.CameraCaptureMode
 import com.packready.shopkeeper.presentation.ui.components.DynamicUpiQrCard
-import com.packready.shopkeeper.presentation.ui.components.InAppCameraCaptureDialog
 import com.packready.shopkeeper.presentation.ui.components.PackReadyEmblem
 import com.packready.shopkeeper.presentation.ui.components.bouncingClickable
 import java.util.Locale
@@ -82,34 +69,18 @@ fun PaymentDialog(
     cart: Cart,
     activeMethod: PaymentMethod,
     cashReceivedInput: String,
-    customerName: String,
-    customerPhone: String,
+    customerName: String = "",
+    customerPhone: String = "",
     onMethodSelect: (PaymentMethod) -> Unit,
     onCashReceivedChange: (String) -> Unit,
-    onCustomerNameChange: (String) -> Unit,
-    onCustomerPhoneChange: (String) -> Unit,
+    onCustomerNameChange: (String) -> Unit = {},
+    onCustomerPhoneChange: (String) -> Unit = {},
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val grandTotal = cart.grandTotal
     val cashReceived = cashReceivedInput.toDoubleOrNull() ?: 0.0
     val changeReturned = (cashReceived - grandTotal).coerceAtLeast(0.0)
-
-    var isCameraCaptureOpen by remember { mutableStateOf(false) }
-    var attachedBillBitmap by remember { mutableStateOf<Bitmap?>(null) }
-
-    if (isCameraCaptureOpen) {
-        InAppCameraCaptureDialog(
-            mode = CameraCaptureMode.SINGLE_PHOTO,
-            title = "Capture Bill / Receipt Proof",
-            instructionText = "Point camera at bill receipt, counter slip or payment proof",
-            onPhotosCaptured = { list ->
-                attachedBillBitmap = list.firstOrNull()
-                isCameraCaptureOpen = false
-            },
-            onDismiss = { isCameraCaptureOpen = false }
-        )
-    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -118,212 +89,117 @@ fun PaymentDialog(
         PackReadyShopkeeperTheme(darkTheme = false) {
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth(0.94f)
-                    .padding(vertical = 16.dp),
+                    .fillMaxWidth(0.95f)
+                    .imePadding()
+                    .padding(vertical = 12.dp),
                 shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 6.dp,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                // Header with PackReady Emblem
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        PackReadyEmblem(size = 32.dp)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "Settlement & Payment",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "Grand Total: ₹${String.format(Locale.US, "%.2f", grandTotal)}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Payment Method Selector Tabs
-                PaymentMethodTabs(
-                    selected = activeMethod,
-                    onSelect = onMethodSelect
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Content depending on selected method
-                when (activeMethod) {
-                    PaymentMethod.CASH -> {
-                        CashPaymentSection(
-                            grandTotal = grandTotal,
-                            cashInput = cashReceivedInput,
-                            changeReturned = changeReturned,
-                            onCashChange = onCashReceivedChange
-                        )
-                    }
-                    PaymentMethod.UPI -> {
-                        DynamicUpiQrCard(
-                            amount = grandTotal,
-                            transactionRef = "TXN-${System.currentTimeMillis() % 100000}"
-                        )
-                    }
-                    PaymentMethod.KHATA -> {
-                        KhataCustomerSection(
-                            customerName = customerName,
-                            customerPhone = customerPhone,
-                            onNameChange = onCustomerNameChange,
-                            onPhoneChange = onCustomerPhoneChange,
-                            amount = grandTotal
-                        )
-                    }
-                    PaymentMethod.CARD -> {
-                        CardPaymentSection(amount = grandTotal)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Optional Bill / Slip Photo Attachment
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    if (attachedBillBitmap == null) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { isCameraCaptureOpen = true }
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.PhotoCamera,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "Snap Bill / Slip Photo",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "Attach photo proof while giving the bill",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "Open Camera",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Image(
-                                    bitmap = attachedBillBitmap!!.asImageBitmap(),
-                                    contentDescription = "Bill Proof",
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .border(1.dp, Emerald500, RoundedCornerShape(8.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = Emerald500,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "Bill Photo Attached",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Emerald500
-                                        )
-                                    }
-                                    Text(
-                                        text = "Recorded with transaction",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            IconButton(onClick = { attachedBillBitmap = null }) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Remove",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Action Confirmation Button
-                Button(
-                    onClick = onConfirm,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    shape = RoundedCornerShape(14.dp),
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(50.dp)
-                        .bouncingClickable(onClick = onConfirm)
+                        .padding(20.dp)
+                        .verticalScroll(rememberScrollState())
                 ) {
-                    Text(
-                        text = "Complete Sale (₹${String.format(Locale.US, "%.2f", grandTotal)})",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                    // Header with PackReady Emblem
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PackReadyEmblem(size = 32.dp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Settlement & Payment",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Grand Total: ₹${String.format(Locale.US, "%.2f", grandTotal)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Payment Method Selector Tabs (Cash, UPI QR, and Adjustment)
+                    PaymentMethodTabs(
+                        selected = activeMethod,
+                        onSelect = onMethodSelect
                     )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Content depending on selected method
+                    when (activeMethod) {
+                        PaymentMethod.UPI -> {
+                            DynamicUpiQrCard(
+                                amount = grandTotal,
+                                transactionRef = "TXN-${System.currentTimeMillis() % 100000}"
+                            )
+                        }
+                        PaymentMethod.ADJUSTMENT -> {
+                            AdjustmentSection(
+                                grandTotal = grandTotal,
+                                itemCount = cart.items.size,
+                                reason = customerName,
+                                onReasonChange = onCustomerNameChange
+                            )
+                        }
+                        else -> {
+                            CashPaymentSection(
+                                grandTotal = grandTotal,
+                                cashInput = cashReceivedInput,
+                                changeReturned = changeReturned,
+                                onCashChange = onCashReceivedChange
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Action Confirmation Button
+                    Button(
+                        onClick = onConfirm,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (activeMethod == PaymentMethod.ADJUSTMENT) Caramel600 else MaterialTheme.colorScheme.primary
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .bouncingClickable(onClick = onConfirm)
+                    ) {
+                        Text(
+                            text = if (activeMethod == PaymentMethod.ADJUSTMENT)
+                                "Confirm Inventory Adjustment (₹${String.format(Locale.US, "%.2f", grandTotal)})"
+                            else
+                                "Complete Sale (₹${String.format(Locale.US, "%.2f", grandTotal)})",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }
     }
-}
 }
 
 @Composable
@@ -334,8 +210,7 @@ private fun PaymentMethodTabs(
     val tabs = listOf(
         Pair(PaymentMethod.CASH, Icons.Default.LocalAtm),
         Pair(PaymentMethod.UPI, Icons.Default.QrCode),
-        Pair(PaymentMethod.KHATA, Icons.AutoMirrored.Filled.MenuBook),
-        Pair(PaymentMethod.CARD, Icons.Default.CreditCard)
+        Pair(PaymentMethod.ADJUSTMENT, Icons.Default.Inventory2)
     )
 
     Surface(
@@ -348,7 +223,7 @@ private fun PaymentMethodTabs(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             tabs.forEach { (method, icon) ->
                 val isSelected = selected == method
@@ -361,28 +236,130 @@ private fun PaymentMethodTabs(
                         .clip(RoundedCornerShape(10.dp))
                         .clickable { onSelect(method) }
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
                     ) {
                         Icon(
                             imageVector = icon,
                             contentDescription = method.label,
                             tint = if (isSelected) Caramel400 else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(17.dp)
                         )
-                        Spacer(modifier = Modifier.height(3.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             text = method.label,
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.labelMedium,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                             color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
-                            fontSize = 10.5.sp
+                            fontSize = 12.sp
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AdjustmentSection(
+    grandTotal: Double,
+    itemCount: Int,
+    reason: String,
+    onReasonChange: (String) -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Cream100),
+        border = BorderStroke(1.dp, Caramel400.copy(alpha = 0.4f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = CircleShape,
+                    color = Caramel100,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Inventory2,
+                            contentDescription = null,
+                            tint = Caramel700,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Inventory Stock Adjustment",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrownTextDark
+                    )
+                    Text(
+                        text = "Non-cash inventory stock deduction",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                        color = BrownTextMuted
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFEADBCE)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "• Deducts $itemCount item(s) from current store stock",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = BrownTextDark
+                    )
+                    Text(
+                        text = "• Adjustment Value: ₹${String.format(Locale.US, "%.2f", grandTotal)}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                        color = Caramel700
+                    )
+                    Text(
+                        text = "• Listed in Transaction History as 'Adjustment'",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = BrownTextDark
+                    )
+                    Text(
+                        text = "• EXCLUDED from Cash Count & Cash Drawer balance",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                        color = ForestGreen600
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = reason,
+                onValueChange = onReasonChange,
+                label = { Text("Adjustment Reason (Optional)", style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp)) },
+                placeholder = { Text("e.g. Damaged, Expired, Store Use, Audit", style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)) },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    focusedBorderColor = Caramel600,
+                    unfocusedBorderColor = Color(0xFFEADBCE)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -486,110 +463,5 @@ private fun CashPaymentSection(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun KhataCustomerSection(
-    customerName: String,
-    customerPhone: String,
-    onNameChange: (String) -> Unit,
-    onPhoneChange: (String) -> Unit,
-    amount: Double
-) {
-    Column {
-        Text(
-            text = "Record as Customer Credit / Udhar",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        OutlinedTextField(
-            value = customerPhone,
-            onValueChange = onPhoneChange,
-            label = { Text("Customer Mobile Number *") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-            ),
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = customerName,
-            onValueChange = onNameChange,
-            label = { Text("Customer Full Name *") },
-            shape = RoundedCornerShape(12.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-            ),
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = "₹${String.format(Locale.US, "%.2f", amount)} will be appended to customer's outstanding balance in the store ledger.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.secondary,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(12.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun CardPaymentSection(amount: Double) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-            modifier = Modifier.size(64.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.CreditCard,
-                    contentDescription = "Card POS",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(32.dp)
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-            text = "Swipe or Tap Card on External EDC Terminal",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            text = "Amount: ₹${String.format(Locale.US, "%.2f", amount)}",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
-        )
     }
 }

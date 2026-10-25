@@ -45,7 +45,8 @@ sealed interface RestockUiEvent {
         val mrp: Double,
         val initialStock: Double,
         val attributes: DynamicAttributes?,
-        val visualEmbeddings: List<Pair<String, FloatArray>> = emptyList()
+        val visualEmbeddings: List<Pair<String, FloatArray>> = emptyList(),
+        val images: List<String> = emptyList()
     ) : RestockUiEvent
     object ClearMessages : RestockUiEvent
 }

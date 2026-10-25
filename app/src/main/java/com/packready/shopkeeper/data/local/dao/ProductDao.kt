@@ -66,6 +66,9 @@ interface ProductDao {
     @Query("DELETE FROM products WHERE id = :id")
     suspend fun deleteById(id: String)
 
+    @Query("DELETE FROM products WHERE barcode IN (:barcodes)")
+    suspend fun deleteByBarcodes(barcodes: List<String>)
+
     @Query("SELECT COUNT(*) FROM products")
     suspend fun getProductCount(): Int
 }

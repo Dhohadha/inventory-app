@@ -53,7 +53,7 @@ import com.packready.shopkeeper.presentation.theme.Terracotta400
 fun ScanReticleOverlay(
     isScanningActive: Boolean = true,
     lastScannedBarcode: String? = null,
-    showStatusBadge: Boolean = true,
+    showStatusBadge: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "laser_sweep")
@@ -83,10 +83,10 @@ fun ScanReticleOverlay(
             val canvasHeight = size.height
 
             // Dimensions of scanning window (responsive to aspect ratio with clearance for top/bottom controls)
-            val boxWidth = (canvasWidth * 0.76f).coerceAtMost(280.dp.toPx())
-            val boxHeight = (canvasHeight * 0.48f).coerceAtMost(boxWidth * 0.68f)
+            val boxWidth = (canvasWidth * 0.78f).coerceAtMost(280.dp.toPx())
+            val boxHeight = (canvasHeight * 0.64f).coerceAtMost(boxWidth * 0.65f)
             val left = (canvasWidth - boxWidth) / 2f
-            val top = ((canvasHeight - boxHeight) / 2f - 14.dp.toPx()).coerceAtLeast(36.dp.toPx())
+            val top = (canvasHeight - boxHeight) / 2f
             val right = left + boxWidth
             val bottom = top + boxHeight
 
@@ -157,8 +157,8 @@ fun ScanReticleOverlay(
             }
         }
 
-        // Live Scanning Status Badge
-        if (showStatusBadge) {
+        // Scanned Confirmation Badge (Only displayed briefly when a barcode is scanned)
+        if (lastScannedBarcode != null) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -166,49 +166,26 @@ fun ScanReticleOverlay(
                 shape = RoundedCornerShape(20.dp),
                 color = Roast900.copy(alpha = 0.90f),
                 shadowElevation = 6.dp,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Caramel500.copy(alpha = 0.4f))
+                border = androidx.compose.foundation.BorderStroke(1.dp, Emerald500.copy(alpha = 0.6f))
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    if (lastScannedBarcode != null) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = Emerald500,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Scanned: $lastScannedBarcode",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Emerald500
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(Caramel400.copy(alpha = pulseAlpha))
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(
-                            imageVector = Icons.Default.QrCodeScanner,
-                            contentDescription = null,
-                            tint = Caramel400,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Desk Scanner Active",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = Emerald500,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Scanned: $lastScannedBarcode",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Emerald500
+                    )
                 }
             }
         }

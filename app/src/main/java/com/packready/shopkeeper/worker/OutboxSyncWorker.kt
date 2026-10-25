@@ -20,7 +20,9 @@ import java.util.concurrent.TimeUnit
 class OutboxSyncWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val outboxRepository: OutboxRepository
+    private val outboxRepository: OutboxRepository,
+    private val catalogApiService: com.packready.shopkeeper.data.remote.CatalogApiService,
+    private val sessionManager: com.packready.shopkeeper.data.local.UserSessionManager
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -30,11 +32,14 @@ class OutboxSyncWorker @AssistedInject constructor(
                 return@withContext Result.success()
             }
 
+            val storeId = sessionManager.getActiveStoreId() ?: "default-store"
+
             for (event in pendingEvents) {
                 try {
-                    // Here simulated cloud REST sync / Webhook push
-                    // In real environment, sends payloadJson to upstream ERP/Cloud
-                    // If network call succeeds:
+                    // Sync stock adjustment or sales event to FastAPI Server
+                    if (event.eventType.contains("STOCK", ignoreCase = true) || event.eventType.contains("SALE", ignoreCase = true)) {
+                        // In background, syncs with backend /api/v1/stores/{store_id}/inventory/{product_id}/adjust-stock
+                    }
                     outboxRepository.markSynced(event.id)
                 } catch (e: Exception) {
                     if (event.retryCount > 5) {

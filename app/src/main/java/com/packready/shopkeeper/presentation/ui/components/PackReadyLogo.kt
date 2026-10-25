@@ -1,5 +1,6 @@
 package com.packready.shopkeeper.presentation.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -7,11 +8,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -34,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import com.packready.shopkeeper.presentation.theme.BrownTextDark
 import com.packready.shopkeeper.presentation.theme.BrownTextMuted
 import com.packready.shopkeeper.presentation.theme.Caramel100
+import com.packready.shopkeeper.presentation.theme.Caramel400
 import com.packready.shopkeeper.presentation.theme.Caramel500
 import com.packready.shopkeeper.presentation.theme.Caramel600
 import com.packready.shopkeeper.presentation.theme.Caramel700
@@ -108,17 +114,19 @@ fun PackReadyEmblem(
 
 @Composable
 fun PackReadyHeaderBrand(
-    subtitle: String = "Shopkeeper Edition",
+    subtitle: String = "",
+    onProfileClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        PackReadyEmblem(size = 36.dp)
-        Spacer(modifier = Modifier.width(10.dp))
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PackReadyEmblem(size = 32.dp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
                 Text(
                     text = "PackReady",
                     fontSize = 17.sp,
@@ -127,26 +135,46 @@ fun PackReadyHeaderBrand(
                     letterSpacing = (-0.3).sp,
                     color = BrownTextDark
                 )
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = Caramel100,
-                    modifier = Modifier.padding(start = 6.dp)
-                ) {
+                if (subtitle.isNotBlank()) {
                     Text(
-                        text = "PRO",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Caramel700,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        text = subtitle,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = BrownTextMuted
                     )
                 }
             }
-            Text(
-                text = subtitle,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = BrownTextMuted
-            )
+        }
+
+        if (onProfileClick != null) {
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .bouncingClickable(onClick = onProfileClick),
+                shape = RoundedCornerShape(20.dp),
+                color = Cream100,
+                border = BorderStroke(1.dp, Caramel400.copy(alpha = 0.45f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = "Profile & Settings",
+                        tint = Caramel700,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Profile",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Caramel700,
+                        fontSize = 11.5.sp
+                    )
+                }
+            }
         }
     }
 }

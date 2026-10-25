@@ -64,6 +64,7 @@ data class Product(
     val gstPercent: Double = 0.0,
     val salesCount: Int = 0,
     val attributes: DynamicAttributes? = null,
+    val images: List<String> = emptyList(),
     val lastRestockedAt: Long = System.currentTimeMillis(),
     val createdAt: Long = System.currentTimeMillis()
 ) {

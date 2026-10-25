@@ -30,7 +30,7 @@ data class Cart(
     val customerPhone: String? = null
 ) {
     val subtotal: Double
-        get() = items.sumOf { it.effectiveUnitPrice * it.quantity }
+        get() = items.sumOf { it.total }
 
     val itemLevelDiscounts: Double
         get() = items.sumOf { it.discount }
@@ -40,12 +40,14 @@ data class Cart(
 
     val taxAmount: Double
         get() = items.sumOf { item ->
-            val taxableAmount = item.total
-            (taxableAmount * (item.product.gstPercent / 100.0))
+            val total = item.total
+            if (item.product.gstPercent > 0.0) {
+                total - (total / (1.0 + item.product.gstPercent / 100.0))
+            } else 0.0
         }
 
     val grandTotal: Double
-        get() = (subtotal - totalDiscount + taxAmount).coerceAtLeast(0.0)
+        get() = (subtotal - overallDiscountAmount).coerceAtLeast(0.0)
 
     val totalUnitsCount: Double
         get() = items.sumOf { it.quantity }

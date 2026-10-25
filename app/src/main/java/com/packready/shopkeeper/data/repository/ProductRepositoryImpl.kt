@@ -11,6 +11,7 @@ import com.packready.shopkeeper.domain.model.ProductCategory
 import com.packready.shopkeeper.domain.repository.ProductRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,8 +19,21 @@ import javax.inject.Singleton
 class ProductRepositoryImpl @Inject constructor(
     private val productDao: ProductDao,
     private val embeddingDao: EmbeddingDao,
-    private val masterCatalogDataSource: MasterCatalogDataSource
+    private val masterCatalogDataSource: MasterCatalogDataSource,
+    private val catalogApiService: com.packready.shopkeeper.data.remote.CatalogApiService,
+    private val sessionManager: com.packready.shopkeeper.data.local.UserSessionManager
 ) : ProductRepository {
+
+    init {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val sampleBarcodes = InitialCatalogData.sampleProducts.map { it.barcode }
+                productDao.deleteByBarcodes(sampleBarcodes)
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
 
     override fun getAllProducts(): Flow<List<Product>> {
         return productDao.getAllProductsFlow().map { entities ->
@@ -56,10 +70,25 @@ class ProductRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getProductByBarcode(barcode: String): Product? {
+        // 1. Check local store inventory in Room SQLite
         val local = productDao.getProductByBarcode(barcode)
         if (local != null) return local.toDomain()
 
-        // Fallback: check offline 10,000 FMCG master catalog
+        // 2. Query Central Master Catalog Server (FastAPI + Redis)
+        try {
+            val response = catalogApiService.getProductByBarcode(barcode)
+            if (response.isSuccessful) {
+                val serverProduct = response.body()?.toDomain()
+                if (serverProduct != null) {
+                    saveProduct(serverProduct)
+                    return serverProduct
+                }
+            }
+        } catch (e: Exception) {
+            // Server offline or network unreachable, fall back to offline catalog
+        }
+
+        // 3. Fallback: check offline 10,000 FMCG master catalog
         val fallback = lookupGlobalCatalog(barcode)
         if (fallback != null) {
             // Auto-cache into local DB so subsequent scans hit local store inventory directly
@@ -71,6 +100,26 @@ class ProductRepositoryImpl @Inject constructor(
 
     override suspend fun saveProduct(product: Product) {
         productDao.insertOrUpdate(ProductEntity.fromDomain(product))
+        try {
+            val storeId = sessionManager.getActiveStoreId()
+            val primaryImg = product.images.firstOrNull()
+            catalogApiService.enrollProduct(
+                com.packready.shopkeeper.data.remote.dto.ProductEnrollRequestDto(
+                    barcode = product.barcode,
+                    name = product.name,
+                    brand = product.brand,
+                    category = product.category.displayName,
+                    standardMrp = product.mrp,
+                    sellingPrice = product.sellingPrice,
+                    costPrice = product.costPrice,
+                    unit = product.unit,
+                    imageUrl = primaryImg,
+                    storeId = storeId
+                )
+            )
+        } catch (_: Exception) {
+            // Local store retains item safely even if offline
+        }
     }
 
     override suspend fun adjustStock(productId: String, delta: Double) {
@@ -86,10 +135,7 @@ class ProductRepositoryImpl @Inject constructor(
     }
 
     override suspend fun lookupGlobalCatalog(barcode: String): Product? {
-        val master = masterCatalogDataSource.lookupByBarcode(barcode)
-        if (master != null) return master
-
-        return InitialCatalogData.sampleProducts.find { it.barcode == barcode || it.id == barcode }
+        return masterCatalogDataSource.lookupByBarcode(barcode)
     }
 
     override suspend fun searchGlobalCatalog(query: String, limit: Int): List<Product> {
@@ -97,8 +143,7 @@ class ProductRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getGlobalCatalogCount(): Int {
-        val count = masterCatalogDataSource.getMasterCatalogCount()
-        return if (count > 0) count else InitialCatalogData.sampleProducts.size
+        return masterCatalogDataSource.getMasterCatalogCount()
     }
 
     override suspend fun saveProductEmbeddings(productId: String, embeddings: List<Pair<String, FloatArray>>) {

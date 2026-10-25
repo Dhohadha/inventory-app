@@ -3,6 +3,7 @@ package com.packready.shopkeeper.presentation.ui.components
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -16,6 +17,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,12 +25,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.FlipCameraAndroid
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,6 +79,9 @@ fun CameraXScannerView(
     onPhotoCaptured: ((Bitmap) -> Unit)? = null,
     showShutterButton: Boolean = false,
     shutterButtonLabel: String = "Capture",
+    isFrontCamera: Boolean = false,
+    isCameraActive: Boolean = true,
+    onToggleLens: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -85,9 +94,26 @@ fun CameraXScannerView(
     var flashScreen by remember { mutableStateOf(false) }
     var zoomRatio by remember { mutableFloatStateOf(1.0f) }
 
+    // Internal lens state when not externally managed
+    var internalFrontCamera by remember { mutableStateOf(false) }
+    val activeIsFront = if (onToggleLens != null) isFrontCamera else internalFrontCamera
+
+    var lensRotation by remember { mutableFloatStateOf(0f) }
+    val animatedLensRotation by animateFloatAsState(
+        targetValue = lensRotation,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
+        label = "scanner_lens_rotation"
+    )
+
+    val previewView = remember {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(Unit) {
         onDispose {
             try {
                 cameraExecutor.shutdown()
@@ -104,6 +130,86 @@ fun CameraXScannerView(
             delay(120)
             flashScreen = false
         }
+    }
+
+    // Dynamic camera binding effect responding to activeIsFront, customAnalyzer, showShutterButton, isCameraActive
+    LaunchedEffect(activeIsFront, customAnalyzer, showShutterButton, isCameraActive) {
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            try {
+                val cameraProvider = cameraProviderFuture.get()
+                if (!isCameraActive) {
+                    cameraProvider.unbindAll()
+                    camera = null
+                    return@addListener
+                }
+
+                val cameraSelector = if (activeIsFront) {
+                    CameraSelector.DEFAULT_FRONT_CAMERA
+                } else {
+                    CameraSelector.DEFAULT_BACK_CAMERA
+                }
+
+                val targetSelector = if (cameraProvider.hasCamera(cameraSelector)) {
+                    cameraSelector
+                } else {
+                    CameraSelector.DEFAULT_BACK_CAMERA
+                }
+
+                val preview = Preview.Builder()
+                    .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                    .build()
+                    .also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                    }
+
+                val analyzerToUse = customAnalyzer ?: BarcodeAnalyzer(
+                    debounceWindowMs = 2000L,
+                    onBarcodeDetected = onBarcodeDetected ?: {}
+                )
+
+                val imageAnalysis = ImageAnalysis.Builder()
+                    .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                    .also {
+                        it.setAnalyzer(cameraExecutor, analyzerToUse)
+                    }
+
+                val needsCapture = showShutterButton || onPhotoCaptured != null
+                val captureUseCase = if (needsCapture) {
+                    ImageCapture.Builder()
+                        .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                        .build().also { imageCapture = it }
+                } else null
+
+                cameraProvider.unbindAll()
+                camera = if (captureUseCase != null) {
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        targetSelector,
+                        preview,
+                        imageAnalysis,
+                        captureUseCase
+                    )
+                } else {
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        targetSelector,
+                        preview,
+                        imageAnalysis
+                    )
+                }
+
+                // Re-apply torch state if rear camera
+                if (!activeIsFront && isTorchOn) {
+                    camera?.cameraControl?.enableTorch(true)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("CameraXScannerView", "Camera bind fallback", e)
+            }
+        }, ContextCompat.getMainExecutor(context))
     }
 
     fun capturePhoto() {
@@ -146,79 +252,7 @@ fun CameraXScannerView(
     Box(modifier = modifier.fillMaxSize()) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { ctx ->
-                val previewView = PreviewView(ctx).apply {
-                    scaleType = PreviewView.ScaleType.FILL_CENTER
-                }
-
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                cameraProviderFuture.addListener({
-                    val cameraProvider = cameraProviderFuture.get()
-
-                    val preview = Preview.Builder()
-                        .build()
-                        .also {
-                            it.setSurfaceProvider(previewView.surfaceProvider)
-                        }
-
-                    val analyzerToUse = customAnalyzer ?: BarcodeAnalyzer(
-                        debounceWindowMs = 1400L,
-                        onBarcodeDetected = onBarcodeDetected ?: {}
-                    )
-
-                    val imageAnalysis = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                        .also {
-                            it.setAnalyzer(cameraExecutor, analyzerToUse)
-                        }
-
-                    val needsCapture = showShutterButton || onPhotoCaptured != null
-                    val captureUseCase = if (needsCapture) {
-                        ImageCapture.Builder()
-                            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                            .build().also { imageCapture = it }
-                    } else null
-
-                    val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-                    try {
-                        cameraProvider.unbindAll()
-                        if (captureUseCase != null) {
-                            camera = cameraProvider.bindToLifecycle(
-                                lifecycleOwner,
-                                cameraSelector,
-                                preview,
-                                imageAnalysis,
-                                captureUseCase
-                            )
-                        } else {
-                            camera = cameraProvider.bindToLifecycle(
-                                lifecycleOwner,
-                                cameraSelector,
-                                preview,
-                                imageAnalysis
-                            )
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.w("CameraXScannerView", "3 use cases not supported by device, falling back to Preview + ImageAnalysis", e)
-                        // Fallback: Prioritize ImageAnalysis so barcode and POS analysis ALWAYS run!
-                        try {
-                            cameraProvider.unbindAll()
-                            camera = cameraProvider.bindToLifecycle(
-                                lifecycleOwner,
-                                cameraSelector,
-                                preview,
-                                imageAnalysis
-                            )
-                        } catch (e2: Exception) {
-                            android.util.Log.e("CameraXScannerView", "Fallback bind failed", e2)
-                        }
-                    }
-                }, ContextCompat.getMainExecutor(ctx))
-
-                previewView
-            }
+            factory = { previewView }
         )
 
         // Shutter screen flash effect
@@ -273,29 +307,65 @@ fun CameraXScannerView(
             }
         }
 
-        // Overlay controls for Torch at Bottom End
-        Surface(
+        // Overlay controls for Lens Switch & Torch at Bottom End
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 12.dp, bottom = 10.dp),
-            shape = CircleShape,
-            color = Roast900.copy(alpha = 0.85f),
-            border = BorderStroke(1.dp, if (isTorchOn) Amber500 else Color.White.copy(alpha = 0.25f)),
-            shadowElevation = 6.dp
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(
-                onClick = {
-                    isTorchOn = !isTorchOn
-                    camera?.cameraControl?.enableTorch(isTorchOn)
-                },
-                modifier = Modifier.size(38.dp)
+            // Camera Flip Button (Front / Rear)
+            Surface(
+                shape = CircleShape,
+                color = Roast900.copy(alpha = 0.85f),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                shadowElevation = 6.dp
             ) {
-                Icon(
-                    imageVector = if (isTorchOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                    contentDescription = "Torch",
-                    tint = if (isTorchOn) Amber500 else Color.White,
-                    modifier = Modifier.size(19.dp)
-                )
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        lensRotation += 180f
+                        if (onToggleLens != null) {
+                            onToggleLens()
+                        } else {
+                            internalFrontCamera = !internalFrontCamera
+                        }
+                    },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FlipCameraAndroid,
+                        contentDescription = "Switch Camera Lens",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .size(19.dp)
+                            .graphicsLayer(rotationZ = animatedLensRotation)
+                    )
+                }
+            }
+
+            // Torch Toggle
+            Surface(
+                shape = CircleShape,
+                color = Roast900.copy(alpha = 0.85f),
+                border = BorderStroke(1.dp, if (isTorchOn) Amber500 else Color.White.copy(alpha = 0.25f)),
+                shadowElevation = 6.dp
+            ) {
+                IconButton(
+                    onClick = {
+                        isTorchOn = !isTorchOn
+                        camera?.cameraControl?.enableTorch(isTorchOn)
+                    },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isTorchOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                        contentDescription = "Torch",
+                        tint = if (isTorchOn) Amber500 else Color.White,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
             }
         }
     }

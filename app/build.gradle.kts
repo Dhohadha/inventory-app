@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt.android)
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -12,7 +13,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.packready.shopkeeper"
+        applicationId = "com.packready.packready_inventory"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
@@ -60,6 +61,15 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true // Also generates a combined universal APK
+        }
+    }
+
 }
 
 dependencies {
@@ -118,6 +128,12 @@ dependencies {
 
     // ZXing for QR & Barcode generation
     implementation(libs.zxing.core)
+
+    // Google Sign-In & Credential Manager
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.google.identity.googleid)
+    implementation(libs.play.services.auth)
 
     // Debug
     debugImplementation(libs.androidx.compose.ui.tooling)

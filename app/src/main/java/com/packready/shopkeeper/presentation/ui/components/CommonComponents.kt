@@ -50,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -76,6 +77,7 @@ import com.packready.shopkeeper.presentation.theme.Caramel600
 import com.packready.shopkeeper.presentation.theme.Caramel700
 import com.packready.shopkeeper.presentation.theme.Cream100
 import com.packready.shopkeeper.presentation.theme.Cream50
+import com.packready.shopkeeper.presentation.theme.Espresso800
 import com.packready.shopkeeper.presentation.theme.ForestGreen600
 import com.packready.shopkeeper.presentation.theme.RustError600
 import java.util.Locale
@@ -151,12 +153,12 @@ fun CategoryFilterChip(
             .clip(RoundedCornerShape(20.dp))
             .bouncingClickable(onClick = onClick),
         shape = RoundedCornerShape(20.dp),
-        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+        color = if (isSelected) Caramel600 else Color.White,
         border = BorderStroke(
             width = 1.dp,
-            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+            color = if (isSelected) Caramel700 else Color(0xFFEADBCE)
         ),
-        shadowElevation = if (isSelected) 3.dp else 0.5.dp
+        shadowElevation = if (isSelected) 2.dp else 0.dp
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -165,21 +167,21 @@ fun CategoryFilterChip(
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (isSelected) Color.White else BrownTextDark
             )
             if (count != null) {
                 Spacer(modifier = Modifier.width(5.dp))
                 Surface(
                     shape = CircleShape,
-                    color = if (isSelected) Color.White.copy(alpha = 0.25f) else MaterialTheme.colorScheme.surfaceVariant
+                    color = if (isSelected) Color.White.copy(alpha = 0.25f) else Cream100
                 ) {
                     Text(
                         text = "$count",
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         fontWeight = FontWeight.Bold,
-                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                        color = if (isSelected) Color.White else Caramel700,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
                     )
                 }
             }
@@ -296,6 +298,13 @@ fun QuantityStepper(
     unit: String = "pcs",
     modifier: Modifier = Modifier
 ) {
+    var showDirectEditDialog by remember { androidx.compose.runtime.mutableStateOf(false) }
+    var directInputText by remember(quantity) {
+        androidx.compose.runtime.mutableStateOf(
+            if (quantity % 1.0 == 0.0) quantity.toInt().toString() else String.format(Locale.US, "%.1f", quantity)
+        )
+    }
+
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
@@ -306,11 +315,7 @@ fun QuantityStepper(
     ) {
         IconButton(
             onClick = { onQuantityChange((quantity - step).coerceAtLeast(0.0)) },
-            modifier = Modifier
-                .size(32.dp)
-                .bouncingClickable(scaleDownFactor = 0.85f) {
-                    onQuantityChange((quantity - step).coerceAtLeast(0.0))
-                }
+            modifier = Modifier.size(32.dp)
         ) {
             Icon(
                 imageVector = if (quantity <= 1.0) Icons.Default.DeleteOutline else Icons.Default.Remove,
@@ -322,30 +327,37 @@ fun QuantityStepper(
 
         val displayQty = if (quantity % 1.0 == 0.0) quantity.toInt().toString() else String.format(Locale.US, "%.1f", quantity)
         
-        AnimatedContent(
-            targetState = "$displayQty $unit",
-            transitionSpec = {
-                (slideInVertically { height -> height } + fadeIn()) togetherWith
-                        (slideOutVertically { height -> -height } + fadeOut())
-            },
-            label = "stepper_qty_anim"
-        ) { text ->
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = BrownTextDark,
-                modifier = Modifier.padding(horizontal = 6.dp)
-            )
+        Surface(
+            color = Color.Transparent,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .clickable {
+                    directInputText = displayQty
+                    showDirectEditDialog = true
+                }
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            AnimatedContent(
+                targetState = "$displayQty $unit",
+                transitionSpec = {
+                    (slideInVertically { height -> height } + fadeIn()) togetherWith
+                            (slideOutVertically { height -> -height } + fadeOut())
+                },
+                label = "stepper_qty_anim"
+            ) { text ->
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = BrownTextDark,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
         }
 
         IconButton(
             onClick = { onQuantityChange(quantity + step) },
-            modifier = Modifier
-                .size(32.dp)
-                .bouncingClickable(scaleDownFactor = 0.85f) {
-                    onQuantityChange(quantity + step)
-                }
+            modifier = Modifier.size(32.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
@@ -353,6 +365,72 @@ fun QuantityStepper(
                 tint = Caramel700,
                 modifier = Modifier.size(15.dp)
             )
+        }
+    }
+
+    if (showDirectEditDialog) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showDirectEditDialog = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .clip(RoundedCornerShape(18.dp)),
+                color = Color.White,
+                tonalElevation = 8.dp,
+                border = BorderStroke(1.dp, BrownBorder)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Enter Quantity ($unit)",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = BrownTextDark
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = directInputText,
+                        onValueChange = { directInputText = it },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                        ),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        androidx.compose.material3.OutlinedButton(
+                            onClick = { showDirectEditDialog = false },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Cancel", color = BrownTextMedium)
+                        }
+                        androidx.compose.material3.Button(
+                            onClick = {
+                                val entered = directInputText.toDoubleOrNull()
+                                if (entered != null && entered >= 0.0) {
+                                    onQuantityChange(entered)
+                                }
+                                showDirectEditDialog = false
+                            },
+                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Espresso800),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Set", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
     }
 }

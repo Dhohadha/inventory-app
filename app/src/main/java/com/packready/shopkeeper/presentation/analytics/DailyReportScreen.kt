@@ -20,14 +20,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AttachMoney
-import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.LocalAtm
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,9 +54,15 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.packready.shopkeeper.domain.model.DailyAnalytics
+import com.packready.shopkeeper.domain.model.PaymentMethod
 import com.packready.shopkeeper.domain.model.SaleTransaction
 import com.packready.shopkeeper.presentation.theme.Amber500
+import com.packready.shopkeeper.presentation.theme.BrownTextMuted
+import com.packready.shopkeeper.presentation.theme.Caramel100
+import com.packready.shopkeeper.presentation.theme.Caramel400
 import com.packready.shopkeeper.presentation.theme.Caramel500
+import com.packready.shopkeeper.presentation.theme.Caramel700
+import com.packready.shopkeeper.presentation.theme.Cream100
 import com.packready.shopkeeper.presentation.theme.Emerald500
 import com.packready.shopkeeper.presentation.theme.ForestGreen600
 import com.packready.shopkeeper.presentation.ui.components.MetricCard
@@ -98,7 +103,7 @@ fun DailyReportScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Gross Margins, Revenue & Payment Channels",
+                                text = "Daily Revenue & Transaction Breakdown",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -146,11 +151,11 @@ fun DailyReportScreen(
                     modifier = Modifier.weight(1f)
                 )
                 MetricCard(
-                    title = "Est. Gross Profit",
-                    value = "₹${String.format(Locale.US, "%.2f", stats?.grossProfit ?: 0.0)}",
-                    subtitle = "${String.format(Locale.US, "%.1f", stats?.profitMarginPercent ?: 0.0)}% Profit Margin",
-                    icon = Icons.AutoMirrored.Filled.TrendingUp,
-                    accentColor = ForestGreen600,
+                    title = "Total Units Sold",
+                    value = "${stats?.totalUnitsSold?.toInt() ?: 0} Units",
+                    subtitle = "Across ${stats?.totalTransactionsCount ?: 0} Transactions",
+                    icon = Icons.Default.ShoppingBag,
+                    accentColor = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -175,9 +180,8 @@ fun DailyReportScreen(
 
                     val cash = stats?.paymentBreakdown?.cashTotal ?: 0.0
                     val upi = stats?.paymentBreakdown?.upiTotal ?: 0.0
-                    val khata = stats?.paymentBreakdown?.khataTotal ?: 0.0
-                    val card = stats?.paymentBreakdown?.cardTotal ?: 0.0
-                    val total = (cash + upi + khata + card).coerceAtLeast(1.0)
+                    val adjustment = stats?.paymentBreakdown?.adjustmentTotal ?: 0.0
+                    val total = (cash + upi).coerceAtLeast(1.0)
 
                     // Proportional Visual Progress Bar
                     Spacer(modifier = Modifier.height(10.dp))
@@ -193,7 +197,7 @@ fun DailyReportScreen(
                                 modifier = Modifier
                                     .weight((cash / total).toFloat().coerceAtLeast(0.01f))
                                     .fillMaxHeight()
-                                    .background(MaterialTheme.colorScheme.primary)
+                                    .background(ForestGreen600)
                             )
                         }
                         if (upi > 0) {
@@ -204,35 +208,19 @@ fun DailyReportScreen(
                                     .background(MaterialTheme.colorScheme.secondary)
                             )
                         }
-                        if (khata > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .weight((khata / total).toFloat().coerceAtLeast(0.01f))
-                                    .fillMaxHeight()
-                                    .background(Amber500)
-                            )
-                        }
-                        if (card > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .weight((card / total).toFloat().coerceAtLeast(0.01f))
-                                    .fillMaxHeight()
-                                    .background(MaterialTheme.colorScheme.tertiary)
-                            )
-                        }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         PaymentSplitPill(
-                            label = "Cash",
+                            label = "Cash Count",
                             amount = cash,
                             icon = Icons.Default.LocalAtm,
-                            color = MaterialTheme.colorScheme.primary
+                            color = ForestGreen600
                         )
                         PaymentSplitPill(
                             label = "UPI QR",
@@ -240,18 +228,14 @@ fun DailyReportScreen(
                             icon = Icons.Default.QrCode,
                             color = MaterialTheme.colorScheme.secondary
                         )
-                        PaymentSplitPill(
-                            label = "Khata",
-                            amount = khata,
-                            icon = Icons.AutoMirrored.Filled.MenuBook,
-                            color = Amber500
-                        )
-                        PaymentSplitPill(
-                            label = "Card",
-                            amount = card,
-                            icon = Icons.Default.CreditCard,
-                            color = MaterialTheme.colorScheme.tertiary
-                        )
+                        if (adjustment > 0) {
+                            PaymentSplitPill(
+                                label = "Adjustments",
+                                amount = adjustment,
+                                icon = Icons.Default.Inventory2,
+                                color = Caramel700
+                            )
+                        }
                     }
                 }
             }
@@ -316,10 +300,17 @@ private fun RecentSaleRow(
     onClick: () -> Unit
 ) {
     val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
+    val isAdjustment = sale.paymentMethod == PaymentMethod.ADJUSTMENT
+
     Card(
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isAdjustment) Cream100 else MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (isAdjustment) Caramel400.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = Modifier
             .fillMaxWidth()
@@ -332,17 +323,57 @@ private fun RecentSaleRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(text = sale.invoiceNumber, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = sale.invoiceNumber,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (isAdjustment) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Caramel100,
+                            border = BorderStroke(0.5.dp, Caramel500)
+                        ) {
+                            Text(
+                                text = "ADJUSTMENT",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Caramel700,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
                 Text(
-                    text = "${sdf.format(Date(sale.timestamp))} • ${sale.items.size} items • ${sale.paymentMethod.label}",
+                    text = "${sdf.format(Date(sale.timestamp))} • ${sale.items.size} items • ${if (isAdjustment) "Stock Deduction (Non-Cash)" else sale.paymentMethod.label}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (isAdjustment) Caramel700 else MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (isAdjustment && !sale.customerName.isNullOrBlank() && sale.customerName != "Store Inventory Adjustment") {
+                    Text(
+                        text = "Reason: ${sale.customerName}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = BrownTextMuted
+                    )
+                }
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(text = "₹${String.format(Locale.US, "%.2f", sale.grandTotal)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                Text(text = "View Thermal Bill", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = "₹${String.format(Locale.US, "%.2f", sale.grandTotal)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isAdjustment) Caramel700 else ForestGreen600
+                )
+                Text(
+                    text = if (isAdjustment) "View Voucher" else "View Thermal Bill",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (isAdjustment) Caramel700 else MaterialTheme.colorScheme.primary
+                )
             }
         }
     }

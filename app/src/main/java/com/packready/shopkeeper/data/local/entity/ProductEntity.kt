@@ -6,6 +6,8 @@ import androidx.room.PrimaryKey
 import com.packready.shopkeeper.domain.model.DynamicAttributes
 import com.packready.shopkeeper.domain.model.Product
 import com.packready.shopkeeper.domain.model.ProductCategory
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 @Entity(
@@ -32,6 +34,7 @@ data class ProductEntity(
     val gstPercent: Double = 0.0,
     val salesCount: Int = 0,
     val attributesJson: String? = null, // Dynamic attributes based on Category
+    val imagesJson: String? = null, // JSON List<String> of file paths/URIs
     val lastRestockedAt: Long = System.currentTimeMillis(),
     val createdAt: Long = System.currentTimeMillis()
 ) {
@@ -50,6 +53,14 @@ data class ProductEntity(
             }
         }
 
+        val parsedImages = imagesJson?.let {
+            try {
+                Json.decodeFromString(ListSerializer(String.serializer()), it)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } ?: emptyList()
+
         return Product(
             id = id,
             barcode = barcode,
@@ -66,6 +77,7 @@ data class ProductEntity(
             gstPercent = gstPercent,
             salesCount = salesCount,
             attributes = parsedAttributes,
+            images = parsedImages,
             lastRestockedAt = lastRestockedAt,
             createdAt = createdAt
         )
@@ -80,6 +92,14 @@ data class ProductEntity(
                     null
                 }
             }
+
+            val jsonImages = if (product.images.isNotEmpty()) {
+                try {
+                    Json.encodeToString(ListSerializer(String.serializer()), product.images)
+                } catch (e: Exception) {
+                    null
+                }
+            } else null
 
             return ProductEntity(
                 id = product.id,
@@ -97,6 +117,7 @@ data class ProductEntity(
                 gstPercent = product.gstPercent,
                 salesCount = product.salesCount,
                 attributesJson = jsonAttr,
+                imagesJson = jsonImages,
                 lastRestockedAt = product.lastRestockedAt,
                 createdAt = product.createdAt
             )

@@ -41,8 +41,9 @@ class ExecuteCheckoutUseCase @Inject constructor(
         val invoicePrefix = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
         val invoiceNumber = "INV-$invoicePrefix-${(System.currentTimeMillis() % 10000).toString().padStart(4, '0')}"
 
-        val changeReturned = if (paymentMethod == PaymentMethod.CASH && cashReceived > cart.grandTotal) {
-            cashReceived - cart.grandTotal
+        val actualCashReceived = if (paymentMethod == PaymentMethod.ADJUSTMENT) 0.0 else cashReceived
+        val changeReturned = if (paymentMethod == PaymentMethod.CASH && actualCashReceived > cart.grandTotal) {
+            actualCashReceived - cart.grandTotal
         } else 0.0
 
         val saleItems = cart.items.map { cartItem ->
@@ -60,6 +61,11 @@ class ExecuteCheckoutUseCase @Inject constructor(
             )
         }
 
+        val effectiveCustomerName = when {
+            paymentMethod == PaymentMethod.ADJUSTMENT -> customerName?.ifBlank { null } ?: "Store Inventory Adjustment"
+            else -> customerName?.ifBlank { null } ?: cart.customerName
+        }
+
         val transaction = SaleTransaction(
             id = transactionId,
             invoiceNumber = invoiceNumber,
@@ -69,10 +75,10 @@ class ExecuteCheckoutUseCase @Inject constructor(
             taxAmount = cart.taxAmount,
             grandTotal = cart.grandTotal,
             paymentMethod = paymentMethod,
-            cashReceived = cashReceived,
+            cashReceived = actualCashReceived,
             changeReturned = changeReturned,
             upiTransactionRef = upiTransactionRef,
-            customerName = customerName?.ifBlank { null } ?: cart.customerName,
+            customerName = effectiveCustomerName,
             customerPhone = customerPhone?.ifBlank { null } ?: cart.customerPhone,
             timestamp = System.currentTimeMillis()
         )

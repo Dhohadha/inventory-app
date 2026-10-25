@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "362156678154",
+    "project_id": "packready-d6a58",
+    "storage_bucket": "packready-d6a58.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:362156678154:android:dd9b0a9551ac81603793f3",
+        "android_client_info": {
+          "package_name": "com.packready.packready_inventory"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "362156678154-rer0tpe1s3lu3oklst4oism74r0lc5m0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB-S79ESEp1vzq5T1VGXrH-LJUrRlK4m3s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "362156678154-rer0tpe1s3lu3oklst4oism74r0lc5m0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

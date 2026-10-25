@@ -16,6 +16,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,9 +64,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.packready.shopkeeper.domain.model.Cart
 import com.packready.shopkeeper.domain.model.CartItem
+import com.packready.shopkeeper.presentation.theme.BrownTextDark
+import com.packready.shopkeeper.presentation.theme.BrownTextMuted
 import com.packready.shopkeeper.presentation.theme.Caramel500
+import com.packready.shopkeeper.presentation.theme.Caramel600
+import com.packready.shopkeeper.presentation.theme.Caramel700
+import com.packready.shopkeeper.presentation.theme.Cream100
 import com.packready.shopkeeper.presentation.theme.Crimson500
 import com.packready.shopkeeper.presentation.theme.Espresso800
+import com.packready.shopkeeper.presentation.theme.ForestGreen600
 import java.util.Locale
 
 @Composable
@@ -82,13 +89,13 @@ fun CartBottomDrawer(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 18.dp,
-        tonalElevation = 6.dp,
+            .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+        color = Color.White,
+        shadowElevation = 16.dp,
+        tonalElevation = 2.dp,
         border = BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+            Color(0xFFE8DFD5)
         )
     ) {
         Column(
@@ -180,41 +187,46 @@ fun CartBottomDrawer(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Cart Summary Left (Compact)
+                // Cart Summary Left (Compact & Branded)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { isExpanded = !isExpanded }
                         .padding(horizontal = 4.dp, vertical = 2.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(42.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
                                 if (cart.items.isNotEmpty())
                                     Brush.linearGradient(
                                         colors = listOf(
-                                            MaterialTheme.colorScheme.primary,
-                                            MaterialTheme.colorScheme.secondary
+                                            Caramel600,
+                                            Caramel700
                                         )
                                     )
                                 else
                                     Brush.linearGradient(
                                         colors = listOf(
-                                            MaterialTheme.colorScheme.surfaceVariant,
-                                            MaterialTheme.colorScheme.surfaceVariant
+                                            Cream100,
+                                            Cream100
                                         )
                                     )
+                            )
+                            .border(
+                                1.dp,
+                                if (cart.items.isNotEmpty()) Caramel700 else Color(0xFFE5DACF),
+                                RoundedCornerShape(12.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.ShoppingCart,
                             contentDescription = "Cart",
-                            tint = if (cart.items.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(19.dp)
+                            tint = if (cart.items.isNotEmpty()) Color.White else Caramel700,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
@@ -231,23 +243,26 @@ fun CartBottomDrawer(
                         ) { total ->
                             Text(
                                 text = "₹${String.format(Locale.US, "%.2f", total)}",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 17.sp,
+                                    letterSpacing = (-0.2).sp
+                                ),
                                 fontWeight = FontWeight.ExtraBold,
-                                color = if (cart.items.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                color = if (cart.items.isNotEmpty()) ForestGreen600 else BrownTextDark
                             )
                         }
                         Text(
-                            text = "${cart.totalUnitsCount.toInt()} units • ${cart.distinctItemsCount} items",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            text = if (cart.items.isEmpty()) "0 units • 0 items" else "${cart.totalUnitsCount.toInt()} units • ${cart.distinctItemsCount} items",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = BrownTextMuted
                         )
                     }
 
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
                         contentDescription = "Toggle",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = BrownTextMuted,
                         modifier = Modifier
                             .padding(start = 6.dp)
                             .size(18.dp)
@@ -259,29 +274,29 @@ fun CartBottomDrawer(
                     onClick = onProceedToPay,
                     enabled = cart.items.isNotEmpty(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                        containerColor = Caramel600,
+                        disabledContainerColor = Cream100
                     ),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 18.dp, vertical = 0.dp),
                     modifier = Modifier
-                        .height(40.dp)
+                        .height(42.dp)
                         .bouncingClickable(scaleDownFactor = 0.93f) {
                             if (cart.items.isNotEmpty()) onProceedToPay()
                         }
                 ) {
                     Text(
                         text = "Pay Now",
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
                         fontWeight = FontWeight.Bold,
-                        color = if (cart.items.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (cart.items.isNotEmpty()) Color.White else BrownTextMuted
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = null,
-                        tint = if (cart.items.isNotEmpty()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(15.dp)
+                        tint = if (cart.items.isNotEmpty()) Color.White else BrownTextMuted,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }

@@ -34,14 +34,19 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.packready.shopkeeper.presentation.theme.BrownTextMuted
+import com.packready.shopkeeper.presentation.theme.Caramel100
+import com.packready.shopkeeper.presentation.theme.Caramel700
 import com.packready.shopkeeper.presentation.analytics.DailyReportScreen
+import com.packready.shopkeeper.presentation.catalog.ProductCatalogScreen
 import com.packready.shopkeeper.presentation.checkout.PosCheckoutScreen
-import com.packready.shopkeeper.presentation.khata.KhataLedgerScreen
 import com.packready.shopkeeper.presentation.loosegoods.LabelGeneratorScreen
 import com.packready.shopkeeper.presentation.restock.InwardRestockScreen
 
 @Composable
-fun PackReadyNavigation() {
+fun PackReadyNavigation(
+    onOpenProfile: () -> Unit = {}
+) {
     val items = Screen.bottomNavItems
     var selectedIndex by rememberSaveable { mutableIntStateOf(0) }
     val saveableStateHolder = rememberSaveableStateHolder()
@@ -49,12 +54,12 @@ fun PackReadyNavigation() {
     Scaffold(
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp,
+                containerColor = androidx.compose.ui.graphics.Color.White,
+                tonalElevation = 6.dp,
                 modifier = Modifier
                     .border(
                         width = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                        color = androidx.compose.ui.graphics.Color(0xFFE8DFD5)
                     )
             ) {
                 items.forEachIndexed { index, screen ->
@@ -97,11 +102,11 @@ fun PackReadyNavigation() {
                             )
                         },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            selectedIconColor = Caramel700,
+                            selectedTextColor = Caramel700,
+                            indicatorColor = Caramel100,
+                            unselectedIconColor = BrownTextMuted,
+                            unselectedTextColor = BrownTextMuted
                         )
                     )
                 }
@@ -129,12 +134,12 @@ fun PackReadyNavigation() {
         ) { targetIndex ->
             saveableStateHolder.SaveableStateProvider(key = targetIndex) {
                 when (targetIndex) {
-                    0 -> PosCheckoutScreen()
-                    1 -> InwardRestockScreen()
-                    2 -> LabelGeneratorScreen()
-                    3 -> KhataLedgerScreen()
+                    0 -> PosCheckoutScreen(isActiveTab = (selectedIndex == 0), onOpenProfile = onOpenProfile)
+                    1 -> ProductCatalogScreen()
+                    2 -> InwardRestockScreen()
+                    3 -> LabelGeneratorScreen()
                     4 -> DailyReportScreen()
-                    else -> PosCheckoutScreen()
+                    else -> PosCheckoutScreen(isActiveTab = (selectedIndex == 0), onOpenProfile = onOpenProfile)
                 }
             }
         }

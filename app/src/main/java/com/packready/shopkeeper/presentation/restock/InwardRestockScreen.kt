@@ -323,10 +323,10 @@ fun InwardRestockScreen(
     if (uiState.isQuickAddDialogOpen) {
         QuickAddProductDialog(
             initialBarcode = uiState.scannedBarcode,
-            onConfirm = { name, barcode, brand, cat, unit, cp, sp, mrp, stock, attrs, embeddings ->
+            onConfirm = { name, barcode, brand, cat, unit, cp, sp, mrp, stock, attrs, embeddings, images ->
                 viewModel.onEvent(
                     RestockUiEvent.CreateNewProduct(
-                        name, barcode, brand, cat, unit, cp, sp, mrp, stock, attrs, embeddings
+                        name, barcode, brand, cat, unit, cp, sp, mrp, stock, attrs, embeddings, images
                     )
                 )
             },

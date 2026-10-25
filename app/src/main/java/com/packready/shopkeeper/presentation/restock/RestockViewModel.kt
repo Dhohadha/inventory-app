@@ -176,6 +176,7 @@ class RestockViewModel @Inject constructor(
                 gstPercent = 5.0,
                 salesCount = 0,
                 attributes = event.attributes,
+                images = event.images,
                 lastRestockedAt = System.currentTimeMillis()
             )
 

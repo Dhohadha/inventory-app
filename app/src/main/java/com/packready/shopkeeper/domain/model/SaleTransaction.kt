@@ -7,7 +7,8 @@ enum class PaymentMethod(val label: String) {
     CASH("Cash"),
     UPI("UPI QR"),
     KHATA("Khata / Udhar"),
-    CARD("Card / POS")
+    CARD("Card / POS"),
+    ADJUSTMENT("Adjustment")
 }
 
 @Serializable

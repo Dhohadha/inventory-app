@@ -11,3 +11,4 @@ captures/
 *.apk
 *.aab
 .kotlin
+unused_models/

@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,7 +46,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.packready.shopkeeper.domain.model.PaymentMethod
 import com.packready.shopkeeper.domain.model.SaleTransaction
+import com.packready.shopkeeper.presentation.theme.Caramel700
 import com.packready.shopkeeper.presentation.theme.Emerald500
 import com.packready.shopkeeper.presentation.theme.ForestGreen600
 import java.text.SimpleDateFormat
@@ -60,6 +64,7 @@ fun ReceiptThermalPreviewDialog(
 ) {
     val context = LocalContext.current
     val sdf = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault())
+    val isAdjustment = sale.paymentMethod == PaymentMethod.ADJUSTMENT
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -67,8 +72,10 @@ fun ReceiptThermalPreviewDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .padding(vertical = 20.dp),
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.90f)
+                .imePadding()
+                .padding(vertical = 12.dp),
             shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 12.dp,
@@ -88,24 +95,24 @@ fun ReceiptThermalPreviewDialog(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = ForestGreen600.copy(alpha = 0.12f),
+                            color = if (isAdjustment) Caramel700.copy(alpha = 0.12f) else ForestGreen600.copy(alpha = 0.12f),
                             modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = "Success",
-                                    tint = ForestGreen600,
+                                    tint = if (isAdjustment) Caramel700 else ForestGreen600,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Sale Completed",
+                            text = if (isAdjustment) "Adjustment Recorded" else "Sale Completed",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = ForestGreen600
+                            color = if (isAdjustment) Caramel700 else ForestGreen600
                         )
                     }
                     IconButton(onClick = onDismiss) {
@@ -219,14 +226,23 @@ fun ReceiptThermalPreviewDialog(
                             Text("₹${String.format(Locale.US, "%.2f", sale.grandTotal)}", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
                         }
                         Text(
-                            text = "Paid via: ${sale.paymentMethod.label}",
+                            text = if (isAdjustment) "Type: Inventory Stock Adjustment" else "Paid via: ${sale.paymentMethod.label}",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             color = Color.Black,
                             modifier = Modifier.fillMaxWidth()
                         )
+                        if (isAdjustment && !sale.customerName.isNullOrBlank() && sale.customerName != "Store Inventory Adjustment") {
+                            Text(
+                                text = "Reason: ${sale.customerName}",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = Color.Black,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                         Text(
-                            text = "\n*** THANK YOU VISIT AGAIN ***",
+                            text = if (isAdjustment) "\n*** INVENTORY ADJUSTMENT VOUCHER ***" else "\n*** THANK YOU VISIT AGAIN ***",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             color = Color.Black
@@ -317,7 +333,7 @@ fun buildWhatsAppBillMessage(sale: SaleTransaction, storeName: String = "PACKREA
         sb.appendLine("Discount: -₹${String.format(Locale.US, "%.2f", sale.discountAmount)}")
     }
     if (sale.taxAmount > 0) {
-        sb.appendLine("GST / Tax: +₹${String.format(Locale.US, "%.2f", sale.taxAmount)}")
+        sb.appendLine("(Incl. GST / Tax: ₹${String.format(Locale.US, "%.2f", sale.taxAmount)})")
     }
     sb.appendLine("💰 *GRAND TOTAL: ₹${String.format(Locale.US, "%.2f", sale.grandTotal)}*")
     sb.appendLine("💳 *Payment Mode:* ${sale.paymentMethod.label}")

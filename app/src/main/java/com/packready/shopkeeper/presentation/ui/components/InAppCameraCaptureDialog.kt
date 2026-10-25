@@ -19,6 +19,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -43,8 +45,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.FlipCameraAndroid
@@ -61,7 +63,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,9 +71,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -86,6 +90,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.packready.shopkeeper.presentation.theme.Amber500
+import com.packready.shopkeeper.presentation.theme.Caramel400
+import com.packready.shopkeeper.presentation.theme.Caramel500
 import com.packready.shopkeeper.presentation.theme.Emerald500
 import com.packready.shopkeeper.presentation.theme.Roast900
 import kotlinx.coroutines.delay
@@ -99,7 +105,7 @@ enum class CameraCaptureMode {
 @Composable
 fun InAppCameraCaptureDialog(
     mode: CameraCaptureMode = CameraCaptureMode.SINGLE_PHOTO,
-    title: String = if (mode == CameraCaptureMode.MULTI_PHOTO) "Product Packaging Camera" else "Document & Bill Camera",
+    title: String = if (mode == CameraCaptureMode.MULTI_PHOTO) "Capture Packaging Photos" else "Document & Bill Camera",
     instructionText: String? = null,
     onPhotosCaptured: (List<Bitmap>) -> Unit,
     onDismiss: () -> Unit
@@ -130,6 +136,20 @@ fun InAppCameraCaptureDialog(
     var isCapturing by remember { mutableStateOf(false) }
     var flashScreen by remember { mutableStateOf(false) }
 
+    // Lens flip rotation animation
+    var flipRotation by remember { mutableFloatStateOf(0f) }
+    val animatedFlipRotation by animateFloatAsState(
+        targetValue = flipRotation,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = 380f),
+        label = "inapp_lens_rotation"
+    )
+
+    val previewView = remember {
+        PreviewView(context).apply {
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
     DisposableEffect(lifecycleOwner) {
@@ -148,6 +168,52 @@ fun InAppCameraCaptureDialog(
             delay(120)
             flashScreen = false
         }
+    }
+
+    // Reactive camera re-binding when lens or permission changes
+    LaunchedEffect(isFrontLens, hasCameraPermission) {
+        if (!hasCameraPermission) return@LaunchedEffect
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            try {
+                val cameraProvider = cameraProviderFuture.get()
+                val desiredSelector = if (isFrontLens) {
+                    CameraSelector.DEFAULT_FRONT_CAMERA
+                } else {
+                    CameraSelector.DEFAULT_BACK_CAMERA
+                }
+
+                val targetSelector = if (cameraProvider.hasCamera(desiredSelector)) {
+                    desiredSelector
+                } else {
+                    CameraSelector.DEFAULT_BACK_CAMERA
+                }
+
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+
+                val captureUseCase = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .build()
+                imageCapture = captureUseCase
+
+                cameraProvider.unbindAll()
+                camera = cameraProvider.bindToLifecycle(
+                    lifecycleOwner,
+                    targetSelector,
+                    preview,
+                    captureUseCase
+                )
+
+                // Re-apply torch state if rear camera
+                if (!isFrontLens && isTorchOn) {
+                    camera?.cameraControl?.enableTorch(true)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }, ContextCompat.getMainExecutor(context))
     }
 
     fun capturePhoto() {
@@ -338,45 +404,7 @@ fun InAppCameraCaptureDialog(
                 // Live Camera View
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        val previewView = PreviewView(ctx).apply {
-                            scaleType = PreviewView.ScaleType.FILL_CENTER
-                        }
-
-                        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                        cameraProviderFuture.addListener({
-                            val cameraProvider = cameraProviderFuture.get()
-
-                            val preview = Preview.Builder().build().also {
-                                it.setSurfaceProvider(previewView.surfaceProvider)
-                            }
-
-                            val captureUseCase = ImageCapture.Builder()
-                                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                                .build()
-                            imageCapture = captureUseCase
-
-                            val cameraSelector = if (isFrontLens) {
-                                CameraSelector.DEFAULT_FRONT_CAMERA
-                            } else {
-                                CameraSelector.DEFAULT_BACK_CAMERA
-                            }
-
-                            try {
-                                cameraProvider.unbindAll()
-                                camera = cameraProvider.bindToLifecycle(
-                                    lifecycleOwner,
-                                    cameraSelector,
-                                    preview,
-                                    captureUseCase
-                                )
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                        }, ContextCompat.getMainExecutor(ctx))
-
-                        previewView
-                    }
+                    factory = { previewView }
                 )
 
                 // Flash Shutter Effect Overlay
@@ -388,27 +416,47 @@ fun InAppCameraCaptureDialog(
                     )
                 }
 
-                // Framing guide overlay for SINGLE_PHOTO mode
-                if (mode == CameraCaptureMode.SINGLE_PHOTO) {
+                // Center Viewfinder Framing Box for Catalog Packaging
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 100.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 24.dp, vertical = 90.dp),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .height(340.dp)
+                            .border(
+                                BorderStroke(1.5.dp, Color.White.copy(alpha = 0.35f)),
+                                RoundedCornerShape(22.dp)
+                            )
                     ) {
-                        Box(
+                        // Subtle center guide hint
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Roast900.copy(alpha = 0.65f),
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(380.dp)
-                                .border(BorderStroke(2.dp, Emerald500.copy(alpha = 0.85f)), RoundedCornerShape(20.dp))
-                                .background(Color.Transparent)
-                        )
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 12.dp)
+                        ) {
+                            Text(
+                                text = if (mode == CameraCaptureMode.MULTI_PHOTO) "Fit item inside packaging frame" else "Align document inside frame",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                fontSize = 10.5.sp
+                            )
+                        }
                     }
                 }
 
-                // Top Controls & Header Bar
+                // Studio Top Floating Frosted Bar
                 Surface(
-                    color = Roast900.copy(alpha = 0.80f),
+                    color = Roast900.copy(alpha = 0.85f),
+                    shape = RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    shadowElevation = 8.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
@@ -416,134 +464,186 @@ fun InAppCameraCaptureDialog(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
+                        // Header Main Row: Title & Action Pills
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.PhotoCamera,
-                                    contentDescription = null,
-                                    tint = Emerald500,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = title,
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(Emerald500.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhotoCamera,
+                                        contentDescription = null,
+                                        tint = Emerald500,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = title,
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = if (isFrontLens) "Front Camera Active" else "Studio Rear Camera",
+                                        color = Caramel400,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp
+                                    )
+                                }
                             }
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 // Torch Toggle
-                                IconButton(
-                                    onClick = {
-                                        isTorchOn = !isTorchOn
-                                        camera?.cameraControl?.enableTorch(isTorchOn)
-                                    },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.DarkGray.copy(alpha = 0.7f))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = if (isTorchOn) Amber500.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, if (isTorchOn) Amber500 else Color.White.copy(alpha = 0.2f))
                                 ) {
-                                    Icon(
-                                        imageVector = if (isTorchOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                                        contentDescription = "Torch",
-                                        tint = if (isTorchOn) Amber500 else Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    IconButton(
+                                        onClick = {
+                                            isTorchOn = !isTorchOn
+                                            camera?.cameraControl?.enableTorch(isTorchOn)
+                                        },
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isTorchOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                                            contentDescription = "Torch",
+                                            tint = if (isTorchOn) Amber500 else Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
 
-                                Spacer(modifier = Modifier.width(10.dp))
-
-                                // Lens Switch (Back / Front)
-                                IconButton(
-                                    onClick = {
-                                        isFrontLens = !isFrontLens
-                                    },
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.DarkGray.copy(alpha = 0.7f))
+                                // Lens Switch (Back <-> Front) with smooth rotation
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.FlipCameraAndroid,
-                                        contentDescription = "Switch Camera",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    IconButton(
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            flipRotation += 180f
+                                            isFrontLens = !isFrontLens
+                                        },
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.FlipCameraAndroid,
+                                            contentDescription = "Switch Camera Lens",
+                                            tint = Color.White,
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .graphicsLayer(rotationZ = animatedFlipRotation)
+                                        )
+                                    }
                                 }
-
-                                Spacer(modifier = Modifier.width(10.dp))
 
                                 // Close Button
-                                IconButton(
-                                    onClick = onDismiss,
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.DarkGray.copy(alpha = 0.7f))
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.White.copy(alpha = 0.12f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Close",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    IconButton(
+                                        onClick = onDismiss,
+                                        modifier = Modifier.size(38.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Close",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
 
-                        // Guidance Banner
-                        val guideText = when {
-                            instructionText != null -> instructionText
-                            mode == CameraCaptureMode.MULTI_PHOTO -> {
-                                when (capturedBitmaps.size) {
-                                    0 -> "Step 1 of 2: Snap FRONT packaging (Product Name & Brand Logo)"
-                                    1 -> "Step 2 of 2: Snap BACK packaging (MRP, Net Qty & Details)"
-                                    else -> "Photos ready! Snap another angle or tap 'Done & Auto-Fill'"
-                                }
-                            }
-                            else -> "Align paper bill or customer slip within the green frame"
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    color = Emerald500.copy(alpha = 0.15f),
-                                    shape = RoundedCornerShape(8.dp)
+                        // Guidance Step Pills for MULTI_PHOTO Mode
+                        if (mode == CameraCaptureMode.MULTI_PHOTO) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val stepCount = capturedBitmaps.size
+                                val steps = listOf(
+                                    "1. Front Face" to (stepCount == 0),
+                                    "2. Back & MRP" to (stepCount == 1),
+                                    "3. Angle / Detail" to (stepCount >= 2)
                                 )
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = Emerald500,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = guideText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold
-                            )
+
+                                steps.forEachIndexed { idx, (label, isCurrent) ->
+                                    val isCompleted = stepCount > idx
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = when {
+                                            isCurrent -> Emerald500.copy(alpha = 0.28f)
+                                            isCompleted -> Emerald500.copy(alpha = 0.15f)
+                                            else -> Color.White.copy(alpha = 0.08f)
+                                        },
+                                        border = BorderStroke(
+                                            1.dp,
+                                            when {
+                                                isCurrent -> Emerald500
+                                                isCompleted -> Emerald500.copy(alpha = 0.5f)
+                                                else -> Color.White.copy(alpha = 0.12f)
+                                            }
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            if (isCompleted) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = null,
+                                                    tint = Emerald500,
+                                                    modifier = Modifier.size(11.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                            }
+                                            Text(
+                                                text = label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isCurrent || isCompleted) Color.White else Color.LightGray,
+                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                fontSize = 10.5.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-                // Bottom Controls Container
+                // Studio Bottom Floating Controls Container
                 Surface(
-                    color = Roast900.copy(alpha = 0.88f),
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    color = Roast900.copy(alpha = 0.90f),
+                    shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    shadowElevation = 12.dp,
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
@@ -554,7 +654,7 @@ fun InAppCameraCaptureDialog(
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // MULTI_PHOTO Thumbnail Strip
+                        // MULTI_PHOTO Filmstrip Reel of Snapped Photos
                         if (mode == CameraCaptureMode.MULTI_PHOTO && capturedBitmaps.isNotEmpty()) {
                             LazyRow(
                                 modifier = Modifier
@@ -570,9 +670,9 @@ fun InAppCameraCaptureDialog(
                                     }
                                     Box(
                                         modifier = Modifier
-                                            .size(72.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .border(1.5.dp, Emerald500, RoundedCornerShape(10.dp))
+                                            .size(70.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .border(1.5.dp, Emerald500, RoundedCornerShape(12.dp))
                                     ) {
                                         Image(
                                             bitmap = bitmap.asImageBitmap(),
@@ -584,7 +684,7 @@ fun InAppCameraCaptureDialog(
                                         // Tag Label
                                         Surface(
                                             color = Roast900.copy(alpha = 0.85f),
-                                            shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 10.dp, bottomEnd = 10.dp),
+                                            shape = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp),
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .align(Alignment.BottomCenter)
@@ -603,15 +703,16 @@ fun InAppCameraCaptureDialog(
                                         IconButton(
                                             onClick = { capturedBitmaps.removeAt(index) },
                                             modifier = Modifier
-                                                .size(22.dp)
+                                                .size(20.dp)
                                                 .align(Alignment.TopEnd)
-                                                .background(Color.Black.copy(alpha = 0.7f), CircleShape)
+                                                .padding(2.dp)
+                                                .background(Color.Black.copy(alpha = 0.75f), CircleShape)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Close,
                                                 contentDescription = "Remove",
                                                 tint = Color.White,
-                                                modifier = Modifier.size(12.dp)
+                                                modifier = Modifier.size(10.dp)
                                             )
                                         }
                                     }
@@ -625,43 +726,64 @@ fun InAppCameraCaptureDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Left spacer or counter badge
+                            // Left: Photo Counter Badge Pill
                             Box(
                                 modifier = Modifier.weight(1f),
                                 contentAlignment = Alignment.CenterStart
                             ) {
                                 if (mode == CameraCaptureMode.MULTI_PHOTO) {
                                     Surface(
-                                        color = Color.DarkGray.copy(alpha = 0.8f),
-                                        shape = RoundedCornerShape(12.dp)
+                                        color = if (capturedBitmaps.isNotEmpty()) Emerald500.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.1f),
+                                        shape = RoundedCornerShape(16.dp),
+                                        border = BorderStroke(1.dp, if (capturedBitmaps.isNotEmpty()) Emerald500.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.15f))
                                     ) {
-                                        Text(
-                                            text = "${capturedBitmaps.size} Snapped",
-                                            color = Color.White,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PhotoCamera,
+                                                contentDescription = null,
+                                                tint = if (capturedBitmaps.isNotEmpty()) Emerald500 else Color.White,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(5.dp))
+                                            Text(
+                                                text = "${capturedBitmaps.size} Snapped",
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.5.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
 
-                            // Center: Shutter Button
+                            // Center: Pro Shutter Button with Dual Ring
                             Box(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
                                     .size(76.dp)
                                     .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.25f))
+                                    .background(
+                                        Brush.radialGradient(
+                                            colors = listOf(
+                                                Emerald500.copy(alpha = 0.45f),
+                                                Caramel400.copy(alpha = 0.20f),
+                                                Color.Transparent
+                                            )
+                                        )
+                                    )
                                     .clickable(enabled = !isCapturing) { capturePhoto() }
-                                    .padding(5.dp)
+                                    .padding(4.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .size(62.dp)
                                         .clip(CircleShape)
                                         .background(Color.White)
-                                        .border(2.dp, Emerald500, CircleShape),
+                                        .border(2.5.dp, Emerald500, CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
@@ -673,7 +795,7 @@ fun InAppCameraCaptureDialog(
                                 }
                             }
 
-                            // Right: Done / Confirm Button
+                            // Right: Done / Confirm Button with Animated Visibility
                             Box(
                                 modifier = Modifier.weight(1f),
                                 contentAlignment = Alignment.CenterEnd
@@ -684,9 +806,15 @@ fun InAppCameraCaptureDialog(
                                             onPhotosCaptured(capturedBitmaps.toList())
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Emerald500),
-                                        shape = RoundedCornerShape(12.dp)
+                                        shape = RoundedCornerShape(14.dp),
+                                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
                                     ) {
-                                        Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(15.dp)
+                                        )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
                                             text = "Done (${capturedBitmaps.size})",
