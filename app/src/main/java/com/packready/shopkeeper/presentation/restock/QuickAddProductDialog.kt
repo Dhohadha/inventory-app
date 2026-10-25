@@ -38,12 +38,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -53,6 +56,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.Warning
 import android.graphics.Bitmap
 import androidx.compose.ui.text.style.TextAlign
 import com.google.mlkit.vision.common.InputImage
@@ -66,7 +70,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -85,6 +88,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -106,8 +110,12 @@ import androidx.compose.ui.window.DialogProperties
 import com.packready.shopkeeper.data.local.ProductImageStorage
 import com.packready.shopkeeper.data.remote.CatalogApiService
 import com.packready.shopkeeper.data.remote.UploadApiService
+import com.packready.shopkeeper.data.remote.dto.MasterProductResponseDto
 import com.packready.shopkeeper.domain.model.DynamicAttributes
 import com.packready.shopkeeper.domain.model.ProductCategory
+import com.packready.shopkeeper.presentation.ui.components.CameraXScannerView
+import java.util.Calendar
+import java.util.Locale
 import com.packready.shopkeeper.presentation.theme.AmberWarning100
 import com.packready.shopkeeper.presentation.theme.AmberWarning600
 import com.packready.shopkeeper.presentation.theme.BrownBorder
@@ -169,6 +177,23 @@ private fun matchCategory(serverCategory: String): ProductCategory {
         it.name.replace("_", " ").contains(serverCategory, ignoreCase = true) ||
         serverCategory.contains(it.name.replace("_", " "), ignoreCase = true)
     } ?: ProductCategory.FOOD_GROCERY
+}
+
+enum class QuickAddStep {
+    INPUT_BARCODE,          // Enter or scan barcode
+    CHECKING_CATALOG,       // Auto-checking Master Catalog
+    FOUND_IN_CATALOG,       // Found in Master Catalog! Fast-path: only ask Expiry Date and Selling Price
+    PROMPT_PHOTOS,          // Not in Master Catalog! Ask for 2 photos (Front & Back)
+    REVIEW_DETAILS          // Review AI-extracted details & save
+}
+
+private fun calculateQuickExpiry(monthsToAdd: Int): String {
+    val cal = Calendar.getInstance()
+    cal.add(Calendar.MONTH, monthsToAdd)
+    val day = cal.get(Calendar.DAY_OF_MONTH)
+    val month = cal.get(Calendar.MONTH) + 1
+    val year = cal.get(Calendar.YEAR)
+    return String.format(Locale.US, "%02d/%02d/%04d", day, month, year)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -242,20 +267,14 @@ fun QuickAddProductDialog(
     }
 
     var barcode by remember { mutableStateOf(initialBarcode ?: "") }
-
-    fun generateInternalEan(): String {
-        val prefix = (20..29).random().toString()
-        val randomMiddle = (1000000000L..9999999999L).random().toString().take(10)
-        val raw12 = prefix + randomMiddle
-        var sumOdd = 0
-        var sumEven = 0
-        raw12.forEachIndexed { i, ch ->
-            val digit = ch - '0'
-            if (i % 2 == 0) sumOdd += digit else sumEven += digit
-        }
-        val checkDigit = (10 - ((sumOdd + sumEven * 3) % 10)) % 10
-        return "$raw12$checkDigit"
+    var matchedMasterProduct by remember { mutableStateOf<MasterProductResponseDto?>(null) }
+    var currentStep by remember {
+        mutableStateOf(
+            if (!initialBarcode.isNullOrBlank()) QuickAddStep.CHECKING_CATALOG else QuickAddStep.INPUT_BARCODE
+        )
     }
+    var isScanningBarcodeInDialog by remember { mutableStateOf(false) }
+
     var isExtractingDetails by remember { mutableStateOf(false) }
     var extractionStatusMessage by remember { mutableStateOf<String?>(null) }
     var extractionStatusIsError by remember { mutableStateOf(false) }
@@ -282,6 +301,83 @@ fun QuickAddProductDialog(
     var fragrance by remember { mutableStateOf("") }
     var size by remember { mutableStateOf("") }
     var grainGrade by remember { mutableStateOf("") }
+
+    fun checkMasterCatalog(targetBarcode: String) {
+        val cleanCode = targetBarcode.trim()
+        if (cleanCode.isBlank()) return
+        barcode = cleanCode
+        currentStep = QuickAddStep.CHECKING_CATALOG
+        coroutineScope.launch {
+            try {
+                val response = catalogApiService?.getProductByBarcode(cleanCode, autoAiFallback = false)
+                if (response != null && response.isSuccessful && response.body() != null) {
+                    val prod = response.body()!!
+                    matchedMasterProduct = prod
+                    name = prod.name
+                    brand = prod.brand
+                    selectedCategory = matchCategory(prod.category)
+                    unit = prod.unit
+                    if (prod.standardMrp > 0) {
+                        mrp = prod.standardMrp.toString()
+                        sellingPrice = prod.standardMrp.toString()
+                        costPrice = String.format(Locale.US, "%.2f", prod.standardMrp * 0.85)
+                    }
+                    stock = "24"
+
+                    prod.dynamicAttributes?.let { da ->
+                        da.netWeight?.let { netWeight = it }
+                        da.isVegetarian?.let { isVegetarian = it }
+                        da.expiryDate?.let { expiryDate = it }
+                        da.mfgDate?.let { mfgDate = it }
+                        da.wattage?.let { wattage = it }
+                        da.warrantyMonths?.let { warrantyMonths = it.toString() }
+                        da.fragrance?.let { fragrance = it }
+                        da.size?.let { size = it }
+                        da.grainGrade?.let { grainGrade = it }
+                    }
+
+                    productImages.clear()
+                    prod.images.forEach { imgDto ->
+                        val remoteUrl = imgDto.secureUrl
+                        if (!productImages.contains(remoteUrl)) {
+                            productImages.add(remoteUrl)
+                            coroutineScope.launch {
+                                ProductImageStorage.saveRemoteUrlLowSpace(context, remoteUrl, cleanCode)
+                            }
+                        }
+                    }
+
+                    currentStep = QuickAddStep.FOUND_IN_CATALOG
+                } else {
+                    matchedMasterProduct = null
+                    currentStep = QuickAddStep.PROMPT_PHOTOS
+                }
+            } catch (e: Exception) {
+                matchedMasterProduct = null
+                currentStep = QuickAddStep.PROMPT_PHOTOS
+            }
+        }
+    }
+
+    LaunchedEffect(initialBarcode) {
+        if (!initialBarcode.isNullOrBlank()) {
+            checkMasterCatalog(initialBarcode)
+        }
+    }
+
+    fun generateInternalEan(): String {
+        val prefix = (20..29).random().toString()
+        val randomMiddle = (1000000000L..9999999999L).random().toString().take(10)
+        val raw12 = prefix + randomMiddle
+        var sumOdd = 0
+        var sumEven = 0
+        raw12.forEachIndexed { i, ch ->
+            val digit = ch - '0'
+            if (i % 2 == 0) sumOdd += digit else sumEven += digit
+        }
+        val checkDigit = (10 - ((sumOdd + sumEven * 3) % 10)) % 10
+        return "$raw12$checkDigit"
+    }
 
     fun processTwoPhotos(frontBitmap: Bitmap, backBitmap: Bitmap?) {
         coroutineScope.launch {
@@ -393,21 +489,93 @@ fun QuickAddProductDialog(
                         }
                         extractionStatusIsError = false
                         showGeminiOption = false
+                        currentStep = QuickAddStep.REVIEW_DETAILS
                     } else {
                         val err = response.errorBody()?.string() ?: response.message()
                         extractionStatusMessage = "Photo AI extraction failed: $err"
                         extractionStatusIsError = true
+                        currentStep = QuickAddStep.REVIEW_DETAILS
                     }
                 }
             } catch (e: Exception) {
                 extractionStatusMessage = "Photo AI extraction error: ${e.message}"
                 extractionStatusIsError = true
+                currentStep = QuickAddStep.REVIEW_DETAILS
             } finally {
                 isAnalyzingTwoPhotos = false
             }
         }
     }
 
+    val performSaveAndConfirm: () -> Unit = {
+        if (!isSavingAndUploading) {
+            coroutineScope.launch {
+                isSavingAndUploading = true
+                val finalImageUrls = mutableListOf<String>()
+                val cleanName = (name.ifBlank { "item" }).trim().replace(Regex("[^a-zA-Z0-9_-]"), "_")
+                val cleanBarcode = barcode.trim().replace(Regex("[^a-zA-Z0-9_-]"), "_")
+                val baseLabel = "${cleanBarcode}_${cleanName}".take(60)
+
+                productImages.forEachIndexed { idx, pathOrUrl ->
+                    if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+                        finalImageUrls.add(pathOrUrl)
+                    } else {
+                        var resolvedUrl = pathOrUrl
+                        try {
+                            val file = File(pathOrUrl)
+                            if (file.exists() && uploadApiService != null) {
+                                val reqFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
+                                val part = MultipartBody.Part.createFormData("file", file.name, reqFile)
+                                val folderPart = "products".toRequestBody("text/plain".toMediaTypeOrNull())
+                                val barcodePart = barcode.toRequestBody("text/plain".toMediaTypeOrNull())
+                                val publicIdPart = "${baseLabel}_${idx + 1}".toRequestBody("text/plain".toMediaTypeOrNull())
+                                val response = uploadApiService.uploadProductImage(part, folderPart, barcodePart, publicIdPart)
+                                if (response.isSuccessful && !response.body()?.secureUrl.isNullOrBlank()) {
+                                    resolvedUrl = response.body()!!.secureUrl!!
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // Keep local path on network failure
+                        }
+                        finalImageUrls.add(resolvedUrl)
+                    }
+                }
+
+                val cp = costPrice.toDoubleOrNull() ?: 0.0
+                val sp = sellingPrice.toDoubleOrNull() ?: (cp * 1.15)
+                val m = mrp.toDoubleOrNull() ?: (sp * 1.05)
+                val st = stock.toDoubleOrNull() ?: 12.0
+
+                val dynAttrs = DynamicAttributes(
+                    netWeight = netWeight.ifBlank { null },
+                    isVegetarian = isVegetarian,
+                    expiryDate = expiryDate.ifBlank { null },
+                    mfgDate = mfgDate.ifBlank { null },
+                    wattage = wattage.ifBlank { null },
+                    warrantyMonths = warrantyMonths.toIntOrNull(),
+                    fragrance = fragrance.ifBlank { null },
+                    size = size.ifBlank { null },
+                    grainGrade = grainGrade.ifBlank { null }
+                )
+
+                isSavingAndUploading = false
+                onConfirm(
+                    name.ifBlank { "Item $barcode" },
+                    barcode,
+                    brand.ifBlank { "General" },
+                    selectedCategory,
+                    unit,
+                    cp,
+                    sp,
+                    m,
+                    st,
+                    dynAttrs,
+                    emptyList(),
+                    finalImageUrls
+                )
+            }
+        }
+    }
 
     // Profit & Margin calculations
     val costDouble = costPrice.toDoubleOrNull()
@@ -443,20 +611,51 @@ fun QuickAddProductDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        PackReadyEmblem(size = 32.dp)
-                        Spacer(modifier = Modifier.width(10.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        if (currentStep != QuickAddStep.INPUT_BARCODE && initialBarcode.isNullOrBlank()) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Cream200,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .clickable { currentStep = QuickAddStep.INPUT_BARCODE }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = BrownTextDark,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                        } else {
+                            PackReadyEmblem(size = 32.dp)
+                            Spacer(modifier = Modifier.width(10.dp))
+                        }
+
                         Column {
                             Text(
-                                text = "Add New Product SKU",
+                                text = when (currentStep) {
+                                    QuickAddStep.FOUND_IN_CATALOG -> "Product in Master Catalog"
+                                    QuickAddStep.PROMPT_PHOTOS -> "Auto-Enroll SKU (AI)"
+                                    QuickAddStep.CHECKING_CATALOG -> "Verifying Barcode..."
+                                    QuickAddStep.REVIEW_DETAILS -> "Review Product Details"
+                                    QuickAddStep.INPUT_BARCODE -> "Add New Product SKU"
+                                },
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = BrownTextDark,
-                                fontSize = 17.sp
+                                fontSize = 16.5.sp
                             )
                             if (barcode.isNotBlank()) {
                                 Surface(
-                                    color = Caramel100,
+                                    color = if (currentStep == QuickAddStep.FOUND_IN_CATALOG) Color(0xFFDCFCE7) else Caramel100,
                                     shape = RoundedCornerShape(6.dp),
                                     modifier = Modifier.padding(top = 2.dp)
                                 ) {
@@ -465,17 +664,17 @@ fun QuickAddProductDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.QrCode,
+                                            imageVector = if (currentStep == QuickAddStep.FOUND_IN_CATALOG) Icons.Default.CheckCircle else Icons.Default.QrCode,
                                             contentDescription = null,
-                                            tint = Caramel700,
+                                            tint = if (currentStep == QuickAddStep.FOUND_IN_CATALOG) Color(0xFF16A34A) else Caramel700,
                                             modifier = Modifier.size(11.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = if (isBarcodeGenerated) "Internal EAN: $barcode" else "Barcode: $barcode",
+                                            text = if (isBarcodeGenerated) "Internal: $barcode" else "Barcode: $barcode",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontFamily = FontFamily.Monospace,
-                                            color = Caramel700,
+                                            color = if (currentStep == QuickAddStep.FOUND_IN_CATALOG) Color(0xFF15803D) else Caramel700,
                                             fontWeight = FontWeight.SemiBold,
                                             fontSize = 10.sp
                                         )
@@ -483,7 +682,7 @@ fun QuickAddProductDialog(
                                 }
                             } else {
                                 Text(
-                                    text = "AI Vision Auto-Fill or Manual Entry",
+                                    text = "Scan or type barcode to start",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = BrownTextMuted,
                                     fontSize = 11.sp
@@ -492,18 +691,40 @@ fun QuickAddProductDialog(
                         }
                     }
 
-                    Surface(
-                        shape = CircleShape,
-                        color = Cream200,
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        IconButton(onClick = onDismiss) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Close",
-                                tint = BrownTextDark,
-                                modifier = Modifier.size(17.dp)
-                            )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (currentStep == QuickAddStep.FOUND_IN_CATALOG || currentStep == QuickAddStep.PROMPT_PHOTOS) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Cream200,
+                                border = BorderStroke(1.dp, BrownBorder),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { currentStep = QuickAddStep.INPUT_BARCODE }
+                            ) {
+                                Text(
+                                    text = "Rescan",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                    color = BrownTextDark,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+
+                        Surface(
+                            shape = CircleShape,
+                            color = Cream200,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            IconButton(onClick = onDismiss) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = BrownTextDark,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -517,14 +738,934 @@ fun QuickAddProductDialog(
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // Card 1: Packaging Studio & AI Auto-Enroll
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.dp, BrownBorder)
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
+                    when (currentStep) {
+                        QuickAddStep.CHECKING_CATALOG -> {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, BrownBorder)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 44.dp, horizontal = 16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        CircularProgressIndicator(
+                                            color = Caramel600,
+                                            modifier = Modifier.size(46.dp),
+                                            strokeWidth = 3.5.dp
+                                        )
+                                        Spacer(modifier = Modifier.height(18.dp))
+                                        Text(
+                                            text = "Checking Master Catalog...",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = BrownTextDark
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "Looking up barcode: $barcode",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = BrownTextMuted
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        QuickAddStep.FOUND_IN_CATALOG -> {
+                            // Fast Path: Product in Master Catalog!
+                            // 1. Verified Master Product Preview Card
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFFF0FDF4),
+                                border = BorderStroke(1.2.dp, Color(0xFF86EFAC))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(74.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .border(1.dp, Color(0xFF86EFAC), RoundedCornerShape(12.dp))
+                                            .background(Color.White),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (productImages.isNotEmpty()) {
+                                            ProductThumbnailImage(
+                                                imagePath = productImages.first(),
+                                                modifier = Modifier.fillMaxSize(),
+                                                reqSize = 160
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.QrCode,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF059669),
+                                                    modifier = Modifier.size(34.dp)
+                                                )
+                                            }
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Default.QrCode,
+                                                contentDescription = null,
+                                                tint = Color(0xFF059669),
+                                                modifier = Modifier.size(34.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = Color(0xFFDCFCE7)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF16A34A),
+                                                    modifier = Modifier.size(11.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Found in Master Catalog",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF15803D)
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Text(
+                                            text = name.ifBlank { "Product Item" },
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = BrownTextDark,
+                                            maxLines = 2,
+                                            fontSize = 15.sp
+                                        )
+
+                                        Spacer(modifier = Modifier.height(3.dp))
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = brand.ifBlank { "Brand" },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Caramel700,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = " • ",
+                                                color = BrownTextMuted,
+                                                fontSize = 11.sp
+                                            )
+                                            Text(
+                                                text = selectedCategory.displayName,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = BrownTextMuted
+                                            )
+                                            if (mrp.isNotBlank()) {
+                                                Text(
+                                                    text = " • ",
+                                                    color = BrownTextMuted,
+                                                    fontSize = 11.sp
+                                                )
+                                                Text(
+                                                    text = "MRP ₹$mrp",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Espresso900
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // 2. Store Pricing & Expiry Card (ONLY asking Expiry Date & Selling Price)
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, BrownBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = "Store Pricing & Expiry",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrownTextDark,
+                                        fontSize = 15.sp
+                                    )
+                                    Text(
+                                        text = "Enter selling price & batch expiry date to add to inventory",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = BrownTextMuted,
+                                        fontSize = 11.sp
+                                    )
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    // Selling Price
+                                    Text(
+                                        text = "Selling Price (₹) *",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrownTextDark
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedTextField(
+                                        value = sellingPrice,
+                                        onValueChange = { input ->
+                                            sellingPrice = input
+                                            if (costPrice.isBlank()) {
+                                                val spVal = input.toDoubleOrNull() ?: 0.0
+                                                if (spVal > 0) costPrice = String.format(Locale.US, "%.2f", spVal * 0.85)
+                                            }
+                                        },
+                                        placeholder = { Text("e.g. ${mrp.ifBlank { "100.00" }}", color = BrownTextMuted) },
+                                        leadingIcon = {
+                                            Text(
+                                                text = "₹",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Caramel700,
+                                                modifier = Modifier.padding(start = 12.dp)
+                                            )
+                                        },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = Color.White,
+                                            unfocusedContainerColor = Color.White,
+                                            focusedBorderColor = Caramel600,
+                                            unfocusedBorderColor = BrownBorder
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    // Margin & Preset Chips for Price
+                                    val mrpVal = mrp.toDoubleOrNull() ?: 0.0
+                                    val spVal = sellingPrice.toDoubleOrNull() ?: 0.0
+                                    if (mrpVal > 0 && spVal > 0) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = if (spVal <= mrpVal) ForestGreen100 else AmberWarning100
+                                            ) {
+                                                val discount = ((mrpVal - spVal) / mrpVal) * 100
+                                                Text(
+                                                    text = if (spVal == mrpVal) "Selling at MRP" else if (spVal < mrpVal) "${String.format(Locale.US, "%.1f", discount)}% OFF MRP" else "Above MRP",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (spVal <= mrpVal) ForestGreen600 else AmberWarning600,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+
+                                            listOf(
+                                                "MRP" to mrpVal,
+                                                "-5%" to (mrpVal * 0.95),
+                                                "-10%" to (mrpVal * 0.90)
+                                            ).forEach { (label, price) ->
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = Cream200,
+                                                    border = BorderStroke(1.dp, BrownBorder),
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .clickable {
+                                                            sellingPrice = String.format(Locale.US, "%.2f", price)
+                                                        }
+                                                ) {
+                                                    Text(
+                                                        text = label,
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                        color = BrownTextDark,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    // Expiry Date
+                                    Text(
+                                        text = "Batch Expiry Date *",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrownTextDark
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedTextField(
+                                        value = expiryDate,
+                                        onValueChange = { expiryDate = it },
+                                        placeholder = { Text("DD/MM/YYYY (e.g. 25/10/2026)", color = BrownTextMuted) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.CalendarToday,
+                                                contentDescription = null,
+                                                tint = Caramel600,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            if (expiryDate.isNotBlank()) {
+                                                IconButton(onClick = { expiryDate = "" }, modifier = Modifier.size(24.dp)) {
+                                                    Icon(imageVector = Icons.Default.Close, contentDescription = "Clear", tint = BrownTextMuted, modifier = Modifier.size(15.dp))
+                                                }
+                                            }
+                                        },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = Color.White,
+                                            unfocusedContainerColor = Color.White,
+                                            focusedBorderColor = Caramel600,
+                                            unfocusedBorderColor = BrownBorder
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    // Quick 1-Tap Expiry Presets
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        listOf(
+                                            "+3 Mos" to 3,
+                                            "+6 Mos" to 6,
+                                            "+1 Year" to 12,
+                                            "+2 Years" to 24
+                                        ).forEach { (label, months) ->
+                                            val calculated = calculateQuickExpiry(months)
+                                            val isSelected = expiryDate == calculated
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isSelected) Caramel600 else Cream200,
+                                                border = BorderStroke(1.dp, if (isSelected) Caramel600 else BrownBorder),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .clickable { expiryDate = calculated }
+                                            ) {
+                                                Text(
+                                                    text = label,
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                                    color = if (isSelected) Color.White else BrownTextDark,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (expiryDate.equals("No Expiry", ignoreCase = true)) Caramel600 else Cream200,
+                                            border = BorderStroke(1.dp, if (expiryDate.equals("No Expiry", ignoreCase = true)) Caramel600 else BrownBorder),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { expiryDate = "No Expiry" }
+                                        ) {
+                                            Text(
+                                                text = "No Expiry",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                                color = if (expiryDate.equals("No Expiry", ignoreCase = true)) Color.White else BrownTextDark,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Collapsible Stock & Cost Price
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    var showAdvancedStockInFound by remember { mutableStateOf(false) }
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { showAdvancedStockInFound = !showAdvancedStockInFound },
+                                        color = Cream100,
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = if (showAdvancedStockInFound) Icons.Default.Remove else Icons.Default.Add,
+                                                    contentDescription = null,
+                                                    tint = Caramel700,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (showAdvancedStockInFound) "Hide Stock & Cost Details" else "Adjust Quantity & Cost Price (Optional)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Caramel700,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                            Text(
+                                                text = "Stock: $stock pcs",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = BrownTextMuted,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+
+                                    AnimatedVisibility(visible = showAdvancedStockInFound) {
+                                        Column(modifier = Modifier.padding(top = 10.dp)) {
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                OutlinedTextField(
+                                                    value = stock,
+                                                    onValueChange = { stock = it },
+                                                    label = { Text("Initial Stock") },
+                                                    placeholder = { Text("24", color = BrownTextMuted) },
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    colors = OutlinedTextFieldDefaults.colors(
+                                                        focusedContainerColor = Color.White,
+                                                        unfocusedContainerColor = Color.White,
+                                                        focusedBorderColor = Caramel600,
+                                                        unfocusedBorderColor = BrownBorder
+                                                    ),
+                                                    modifier = Modifier.weight(1f),
+                                                    singleLine = true
+                                                )
+                                                OutlinedTextField(
+                                                    value = costPrice,
+                                                    onValueChange = { costPrice = it },
+                                                    label = { Text("Cost Price (₹)") },
+                                                    placeholder = { Text("Purchase cost", color = BrownTextMuted) },
+                                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    colors = OutlinedTextFieldDefaults.colors(
+                                                        focusedContainerColor = Color.White,
+                                                        unfocusedContainerColor = Color.White,
+                                                        focusedBorderColor = Caramel600,
+                                                        unfocusedBorderColor = BrownBorder
+                                                    ),
+                                                    modifier = Modifier.weight(1f),
+                                                    singleLine = true
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        QuickAddStep.PROMPT_PHOTOS -> {
+                            // Amber Notice: Not found in Master Catalog
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                color = AmberWarning100,
+                                border = BorderStroke(1.dp, AmberWarning600.copy(alpha = 0.35f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = AmberWarning600,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = "Product not in Master Catalog",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF92400E),
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = if (barcode.isNotBlank()) "Barcode $barcode is new. Snap 2 photos for AI Auto-Enrollment." else "Snap front & back photos to extract details with Gemini AI.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFFB45309),
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Hero 2-Photo AI Enrollment Studio
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, BrownBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .bouncingClickable { isTwoPhotoCameraOpen = true },
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color.Transparent
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(
+                                                    brush = Brush.linearGradient(
+                                                        colors = listOf(
+                                                            Color(0xFF4C1D95),
+                                                            Color(0xFF6D28D9),
+                                                            Color(0xFF7C3AED)
+                                                        )
+                                                    )
+                                                )
+                                                .padding(14.dp)
+                                        ) {
+                                            Column(modifier = Modifier.fillMaxWidth()) {
+                                                // Top Header Row
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.weight(1f, fill = false)
+                                                    ) {
+                                                        Surface(
+                                                            shape = CircleShape,
+                                                            color = Color(0x33FFFFFF),
+                                                            modifier = Modifier.size(30.dp)
+                                                        ) {
+                                                            Box(contentAlignment = Alignment.Center) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.AutoAwesome,
+                                                                    contentDescription = null,
+                                                                    tint = Color(0xFFFDE047),
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = "Smart 2-Photo AI Auto-Enroll",
+                                                                style = MaterialTheme.typography.titleSmall,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color.White,
+                                                                fontSize = 14.sp
+                                                            )
+                                                            Text(
+                                                                text = "Gemini Multimodal Vision AI",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = Color(0xFFDDD6FE),
+                                                                fontSize = 10.sp
+                                                            )
+                                                        }
+                                                    }
+
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = Color(0x35FFFFFF)
+                                                    ) {
+                                                        Text(
+                                                            text = "GEMINI AI",
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                                            fontWeight = FontWeight.Black,
+                                                            color = Color.White,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.height(10.dp))
+
+                                                // 2 Step Guided Slots
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    // Step 1: Front
+                                                    Surface(
+                                                        modifier = Modifier.weight(1f),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = Color(0x22FFFFFF),
+                                                        border = BorderStroke(1.dp, Color(0x44FFFFFF))
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.CameraAlt,
+                                                                contentDescription = null,
+                                                                tint = Color.White,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Column {
+                                                                Text(
+                                                                    text = "1. Front View",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = Color.White,
+                                                                    fontSize = 11.sp
+                                                                )
+                                                                Text(
+                                                                    text = "Title & Brand",
+                                                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
+                                                                    color = Color(0xFFDDD6FE)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Step 2: Back
+                                                    Surface(
+                                                        modifier = Modifier.weight(1f),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = Color(0x22FFFFFF),
+                                                        border = BorderStroke(1.dp, Color(0x44FFFFFF))
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.QrCode,
+                                                                contentDescription = null,
+                                                                tint = Color.White,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Column {
+                                                                Text(
+                                                                    text = "2. Back View",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = Color.White,
+                                                                    fontSize = 11.sp
+                                                                )
+                                                                Text(
+                                                                    text = "Barcode & Expiry",
+                                                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp),
+                                                                    color = Color(0xFFDDD6FE)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Spacer(modifier = Modifier.height(12.dp))
+
+                                                // Action Buttons Row
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Button(
+                                                        onClick = { isTwoPhotoCameraOpen = true },
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .height(38.dp),
+                                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        contentPadding = PaddingValues(horizontal = 10.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.CameraAlt,
+                                                            contentDescription = null,
+                                                            tint = Color(0xFF6D28D9),
+                                                            modifier = Modifier.size(15.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Snap Packaging ⚡",
+                                                            color = Color(0xFF6D28D9),
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 12.sp
+                                                        )
+                                                    }
+
+                                                    Surface(
+                                                        modifier = Modifier
+                                                            .height(38.dp)
+                                                            .clip(RoundedCornerShape(10.dp))
+                                                            .bouncingClickable { galleryLauncher.launch("image/*") },
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = Color(0x33FFFFFF),
+                                                        border = BorderStroke(1.dp, Color(0x66FFFFFF))
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 12.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.PhotoLibrary,
+                                                                contentDescription = null,
+                                                                tint = Color.White,
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(4.dp))
+                                                            Text(
+                                                                text = "Gallery",
+                                                                color = Color.White,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                fontSize = 11.5.sp
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .bouncingClickable { currentStep = QuickAddStep.REVIEW_DETAILS },
+                                shape = RoundedCornerShape(12.dp),
+                                color = Cream100,
+                                border = BorderStroke(1.dp, BrownBorder)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(vertical = 11.dp, horizontal = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(imageVector = Icons.Default.Edit, contentDescription = null, tint = BrownTextDark, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Skip Photos & Enter Details Manually ✍️",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = BrownTextDark
+                                    )
+                                }
+                            }
+                        }
+
+                        QuickAddStep.INPUT_BARCODE -> {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, BrownBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = "Scan or Enter Barcode",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrownTextDark
+                                    )
+                                    Text(
+                                        text = "First check if the SKU already exists in the master catalog",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = BrownTextMuted,
+                                        fontSize = 11.sp
+                                    )
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    OutlinedTextField(
+                                        value = barcode,
+                                        onValueChange = { barcode = it },
+                                        label = { Text("Barcode / EAN / QR") },
+                                        placeholder = { Text("e.g. 8901030383789", color = BrownTextMuted) },
+                                        leadingIcon = {
+                                            Icon(imageVector = Icons.Default.QrCode, contentDescription = null, tint = Caramel600, modifier = Modifier.size(18.dp))
+                                        },
+                                        trailingIcon = {
+                                            if (barcode.isNotBlank()) {
+                                                IconButton(onClick = { barcode = "" }, modifier = Modifier.size(24.dp)) {
+                                                    Icon(imageVector = Icons.Default.Close, contentDescription = "Clear", tint = BrownTextMuted, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = Color.White,
+                                            unfocusedContainerColor = Color.White,
+                                            focusedBorderColor = Caramel600,
+                                            unfocusedBorderColor = BrownBorder
+                                        ),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true
+                                    )
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    if (isScanningBarcodeInDialog) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(200.dp)
+                                                .clip(RoundedCornerShape(14.dp))
+                                        ) {
+                                            CameraXScannerView(
+                                                onBarcodeDetected = { detected ->
+                                                    isScanningBarcodeInDialog = false
+                                                    checkMasterCatalog(detected)
+                                                }
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable { isScanningBarcodeInDialog = !isScanningBarcodeInDialog },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isScanningBarcodeInDialog) Caramel600 else Cream200,
+                                            border = BorderStroke(1.dp, if (isScanningBarcodeInDialog) Caramel600 else BrownBorder)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(vertical = 10.dp),
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CameraAlt,
+                                                    contentDescription = null,
+                                                    tint = if (isScanningBarcodeInDialog) Color.White else BrownTextDark,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (isScanningBarcodeInDialog) "Close Camera" else "Scan with Camera",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isScanningBarcodeInDialog) Color.White else BrownTextDark
+                                                )
+                                            }
+                                        }
+
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable {
+                                                    if (barcode.isNotBlank()) checkMasterCatalog(barcode)
+                                                },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Caramel100,
+                                            border = BorderStroke(1.dp, Caramel400)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(vertical = 10.dp),
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = Caramel700, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Check Catalog",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Caramel700
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(modifier = Modifier.weight(1f).height(1.dp).background(BrownDivider))
+                                        Text(
+                                            text = " OR ",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = BrownTextMuted,
+                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                        )
+                                        Box(modifier = Modifier.weight(1f).height(1.dp).background(BrownDivider))
+                                    }
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .bouncingClickable { currentStep = QuickAddStep.PROMPT_PHOTOS },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF3E8FF),
+                                        border = BorderStroke(1.dp, Color(0xFFC084FC))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(vertical = 12.dp, horizontal = 14.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "No Barcode? Snap 2 Photos with AI ⚡",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF6D28D9)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        QuickAddStep.REVIEW_DETAILS -> {
+                            // Card 1: Packaging Studio & AI Auto-Enroll
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, BrownBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
                             if (productImages.isEmpty()) {
                                 // Hero State: No photos yet -> Inviting 2-Photo Vision AI Banner
                                 Surface(
@@ -2109,97 +3250,158 @@ fun QuickAddProductDialog(
                     }
                 }
             }
+        }
+    }
 
-            Spacer(modifier = Modifier.height(14.dp))
+    Spacer(modifier = Modifier.height(14.dp))
 
-            // Bottom Action Buttons (pinned at bottom so they never get cut off)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    enabled = !isSavingAndUploading,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(50.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, BrownBorder)
-                ) {
-                    Text("Cancel", color = BrownTextDark, fontWeight = FontWeight.SemiBold)
+    // Bottom Action Buttons (pinned at bottom so they never get cut off)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedButton(
+            onClick = {
+                if ((currentStep == QuickAddStep.FOUND_IN_CATALOG || currentStep == QuickAddStep.PROMPT_PHOTOS) && initialBarcode.isNullOrBlank()) {
+                    currentStep = QuickAddStep.INPUT_BARCODE
+                } else {
+                    onDismiss()
                 }
+            },
+            enabled = !isSavingAndUploading,
+            modifier = Modifier
+                .weight(1f)
+                .height(50.dp),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(1.dp, BrownBorder)
+        ) {
+            Text(
+                text = if ((currentStep == QuickAddStep.FOUND_IN_CATALOG || currentStep == QuickAddStep.PROMPT_PHOTOS) && initialBarcode.isNullOrBlank()) "Back" else "Cancel",
+                color = BrownTextDark,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
 
+        when (currentStep) {
+            QuickAddStep.FOUND_IN_CATALOG -> {
+                Button(
+                    onClick = performSaveAndConfirm,
+                    enabled = sellingPrice.isNotBlank() && !isSavingAndUploading,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                    modifier = Modifier
+                        .weight(2f)
+                        .height(50.dp)
+                ) {
+                    if (isSavingAndUploading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Adding to Store...",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    } else {
+                        Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Add to Store Inventory ⚡",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
+            }
+
+            QuickAddStep.PROMPT_PHOTOS -> {
+                Button(
+                    onClick = { isTwoPhotoCameraOpen = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                    modifier = Modifier
+                        .weight(2f)
+                        .height(50.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.CameraAlt, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Snap 2 Photos (AI)",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+
+            QuickAddStep.CHECKING_CATALOG -> {
+                Button(
+                    onClick = {},
+                    enabled = false,
+                    colors = ButtonDefaults.buttonColors(disabledContainerColor = Cream200),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .weight(2f)
+                        .height(50.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = Caramel700,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Verifying Barcode...",
+                        color = Caramel700,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            QuickAddStep.INPUT_BARCODE -> {
                 Button(
                     onClick = {
-                        if (isSavingAndUploading) return@Button
-                        coroutineScope.launch {
-                            isSavingAndUploading = true
-                            val finalImageUrls = mutableListOf<String>()
-                            val cleanName = (name.ifBlank { "item" }).trim().replace(Regex("[^a-zA-Z0-9_-]"), "_")
-                            val cleanBarcode = barcode.trim().replace(Regex("[^a-zA-Z0-9_-]"), "_")
-                            val baseLabel = "${cleanBarcode}_${cleanName}".take(60)
-
-                            productImages.forEachIndexed { idx, pathOrUrl ->
-                                if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
-                                    finalImageUrls.add(pathOrUrl)
-                                } else {
-                                    var resolvedUrl = pathOrUrl
-                                    try {
-                                        val file = File(pathOrUrl)
-                                        if (file.exists() && uploadApiService != null) {
-                                            val reqFile = file.asRequestBody("image/jpeg".toMediaTypeOrNull())
-                                            val part = MultipartBody.Part.createFormData("file", file.name, reqFile)
-                                            val folderPart = "products".toRequestBody("text/plain".toMediaTypeOrNull())
-                                            val barcodePart = barcode.toRequestBody("text/plain".toMediaTypeOrNull())
-                                            val publicIdPart = "${baseLabel}_${idx + 1}".toRequestBody("text/plain".toMediaTypeOrNull())
-                                            val response = uploadApiService.uploadProductImage(part, folderPart, barcodePart, publicIdPart)
-                                            if (response.isSuccessful && !response.body()?.secureUrl.isNullOrBlank()) {
-                                                resolvedUrl = response.body()!!.secureUrl!!
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        // Keep local path on network failure
-                                    }
-                                    finalImageUrls.add(resolvedUrl)
-                                }
-                            }
-
-                            val cp = costPrice.toDoubleOrNull() ?: 0.0
-                            val sp = sellingPrice.toDoubleOrNull() ?: (cp * 1.15)
-                            val m = mrp.toDoubleOrNull() ?: (sp * 1.05)
-                            val st = stock.toDoubleOrNull() ?: 12.0
-
-                            val dynAttrs = DynamicAttributes(
-                                netWeight = netWeight.ifBlank { null },
-                                isVegetarian = isVegetarian,
-                                expiryDate = expiryDate.ifBlank { null },
-                                mfgDate = mfgDate.ifBlank { null },
-                                wattage = wattage.ifBlank { null },
-                                warrantyMonths = warrantyMonths.toIntOrNull(),
-                                fragrance = fragrance.ifBlank { null },
-                                size = size.ifBlank { null },
-                                grainGrade = grainGrade.ifBlank { null }
-                            )
-
-                            isSavingAndUploading = false
-                            onConfirm(
-                                name.ifBlank { "Item $barcode" },
-                                barcode,
-                                brand.ifBlank { "General" },
-                                selectedCategory,
-                                unit,
-                                cp,
-                                sp,
-                                m,
-                                st,
-                                dynAttrs,
-                                emptyList(),
-                                finalImageUrls
-                            )
+                        if (barcode.isNotBlank()) {
+                            checkMasterCatalog(barcode)
+                        } else {
+                            currentStep = QuickAddStep.PROMPT_PHOTOS
                         }
                     },
-                    enabled = !isSavingAndUploading,
+                    colors = ButtonDefaults.buttonColors(containerColor = Caramel700),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                    modifier = Modifier
+                        .weight(2f)
+                        .height(50.dp)
+                ) {
+                    Icon(
+                        imageVector = if (barcode.isNotBlank()) Icons.Default.Search else Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (barcode.isNotBlank()) "Check Master Catalog 🔍" else "Snap Photos with AI ✨",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
+                }
+            }
+
+            QuickAddStep.REVIEW_DETAILS -> {
+                Button(
+                    onClick = performSaveAndConfirm,
+                    enabled = name.isNotBlank() && sellingPrice.isNotBlank() && !isSavingAndUploading,
                     colors = ButtonDefaults.buttonColors(containerColor = Espresso800),
                     shape = RoundedCornerShape(14.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
@@ -2234,6 +3436,7 @@ fun QuickAddProductDialog(
             }
         }
     }
+}
 }
 
     if (isCameraCaptureOpen) {
@@ -2595,4 +3798,5 @@ fun QuickAddProductDialog(
             }
         )
     }
+}
 }
